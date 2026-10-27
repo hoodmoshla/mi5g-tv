@@ -1,17 +1,22 @@
 package tv.cleanyour.core.registry
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import tv.cleanyour.core.store.DocumentStore
+import tv.cleanyour.core.trust.IndexVerifier
 import tv.cleanyour.core.trust.IndexFailure
+import tv.cleanyour.core.trust.MinisignIndexVerifier
 import tv.cleanyour.core.trust.TrustRoots
 import tv.cleanyour.testing.fixtures.FakeClock
 import tv.cleanyour.testing.fixtures.FakeHttp
 import tv.cleanyour.testing.fixtures.MemoryDocumentStore
 import java.io.IOException
+import java.util.Base64
 
 // The index state machine (SECURITY 2.4 S2, S3; PRODUCT-SPEC F9) against FakeHttp and a memory
 // document store, with real minisign signatures from a test publisher.
@@ -83,7 +88,7 @@ class IndexRegistryTest {
         assertEquals(5, s.index.sequence)
         assertEquals(Times.NOW, s.fetchedAtMs)
         assertEquals(false, s.stale)
-        assertEquals(setOf(IndexRegistry.CACHE_PATH), store.paths())
+        assertEquals(setOf(IndexRegistry.CACHE_PATH, IndexRegistry.HIGH_WATER_PATH), store.paths())
         // a new process restores the stored copy (higher sequence than the seed) with no network
         val again = registry(sources = null).restore() as IndexState.Ready
         assertEquals(5, again.index.sequence)
@@ -128,7 +133,7 @@ class IndexRegistryTest {
         val s = failed(r.refresh())
         assertEquals(IndexFailure.BAD_SIGNATURE, s.verdict)
         assertEquals(1L, s.last?.sequence)
-        assertTrue(store.paths().isEmpty())
+        assertEquals(setOf(IndexRegistry.HIGH_WATER_PATH), store.paths())
     }
 
     @Test fun replayedIndexIsRefusedAlsoAfterARestart() = runBlocking {
@@ -182,6 +187,201 @@ class IndexRegistryTest {
         assertEquals(1, (registry().restore() as IndexState.Ready).index.sequence)
     }
 
+    @Test fun highWaterSurvivesCacheWriteFailure() = runBlocking {
+        serve(pub.index(5), pub.keys(1))
+        val backing = MemoryDocumentStore()
+        val r = IndexRegistry(http, FailCacheWriteStore(backing), clock, pub.bundle(indexSeq = 1), src, pub.verifier)
+        assertEquals(5L, (r.refresh() as IndexState.Ready).index.sequence)
+        assertNull(backing.bytes(IndexRegistry.CACHE_PATH))
+        assertNotNull(backing.bytes(IndexRegistry.HIGH_WATER_PATH))
+
+        val restarted = IndexRegistry(http, backing, clock, pub.bundle(indexSeq = 1), null, pub.verifier)
+        val restored = failed(restarted.restore())
+        assertEquals(IndexFailure.ROLLBACK, restored.verdict)
+        assertNull(restarted.installableIndex())
+    }
+
+    @Test fun highWaterSurvivesCacheDeletion() = runBlocking {
+        serve(pub.index(8), pub.keys(1))
+        assertEquals(8L, (registry().refresh() as IndexState.Ready).index.sequence)
+        store.delete(IndexRegistry.CACHE_PATH)
+
+        val restarted = registry(sources = null)
+        assertEquals(IndexFailure.ROLLBACK, failed(restarted.restore()).verdict)
+        assertNull(restarted.installableIndex())
+    }
+
+    @Test fun highWaterWriteFailureDoesNotPublishTheNewIndexAsInstallable() = runBlocking {
+        val r = registry()
+        assertTrue(r.restore() is IndexState.Ready)
+        store.failNextWrite = IOException("high-water unavailable")
+        serve(pub.index(5), pub.keys(1))
+
+        val state = failed(r.refresh())
+        assertNull(state.failure)
+        assertNull(state.verdict)
+        assertEquals(1L, state.last?.sequence)
+        assertNull(r.installableIndex())
+    }
+
+    @Test fun corruptHighWaterFailsClosed() = runBlocking {
+        serve(pub.index(5), pub.keys(1))
+        registry().refresh()
+        store.write(IndexRegistry.HIGH_WATER_PATH, "{not json".toByteArray())
+
+        val restarted = registry(sources = null)
+        assertEquals(IndexFailure.BAD_KEYS_FILE, failed(restarted.restore()).verdict)
+        assertNull(restarted.installableIndex())
+    }
+
+    @Test fun newerRootSignedKeysArePersistedWhenTheIndexIsRejected() = runBlocking {
+        val old = pub.ci
+        serve(pub.index(5), pub.keys(1))
+        val r = registry()
+        assertTrue(r.refresh() is IndexState.Ready)
+        val next = Signer()
+        serve(pub.index(6, by = old), pub.keys(2, active = listOf(next), revoked = listOf(old)))
+
+        val rejected = failed(r.refresh())
+        assertEquals(IndexFailure.REVOKED_KEY, rejected.verdict)
+        assertNull(r.installableIndex())
+
+        val restarted = registry(sources = null)
+        val restored = failed(restarted.restore())
+        assertEquals(IndexFailure.REVOKED_KEY, restored.verdict)
+        assertNull(restarted.installableIndex())
+    }
+
+    @Test fun sameSequenceKeysConflictCannotReplacePersistedKeys() = runBlocking {
+        val old = pub.ci
+        serve(pub.index(5), pub.keys(1))
+        val r = registry()
+        assertTrue(r.refresh() is IndexState.Ready)
+        val other = Signer()
+        serve(pub.index(6), pub.keys(1, active = listOf(other), revoked = listOf(old)))
+
+        assertEquals(IndexFailure.BAD_KEYS_FILE, failed(r.refresh()).verdict)
+        val restarted = registry(sources = null)
+        assertEquals(5L, (restarted.restore() as IndexState.Ready).index.sequence)
+        assertNotNull(restarted.installableIndex())
+    }
+
+    @Test fun restoreKeysConflictRecoversOnlyWithNewerRootSignedKeys() = runBlocking {
+        val backing = MemoryDocumentStore()
+        val seed = pub.bundle(indexSeq = 1)
+        assertTrue(IndexRegistry(http, backing, clock, seed, null, pub.verifier).restore() is IndexState.Ready)
+
+        val old = pub.ci
+        val other = Signer()
+        val conflictingIndex = pub.index(5, by = other)
+        val conflictingKeys = pub.keys(1, active = listOf(other), revoked = listOf(old))
+        val b64 = Base64.getEncoder()
+        val cache = """{"schema":1,"sequence":5,"keys_sequence":1,"fetched_at_ms":${Times.NOW},"index":"${b64.encodeToString(conflictingIndex.first)}","index_sig":"${b64.encodeToString(conflictingIndex.second)}","keys":"${b64.encodeToString(conflictingKeys.first)}","keys_sig":"${b64.encodeToString(conflictingKeys.second)}"}"""
+        backing.write(IndexRegistry.CACHE_PATH, cache.toByteArray())
+
+        val recovering = IndexRegistry(http, backing, clock, seed, src, pub.verifier)
+        assertEquals(IndexFailure.BAD_KEYS_FILE, failed(recovering.restore()).verdict)
+        assertNull(recovering.installableIndex())
+        val offline = failed(recovering.refresh())
+        assertEquals(FetchFailure.HTTP_ERROR, offline.failure)
+        assertEquals(5L, offline.shownIndex()?.sequence)
+        assertNull(recovering.installableIndex())
+
+        val newerKeys = pub.keys(2, active = listOf(old), revoked = listOf(other))
+        serve(pub.index(6, by = old), newerKeys)
+        assertEquals(6L, (recovering.refresh() as IndexState.Ready).index.sequence)
+
+        val restarted = IndexRegistry(http, backing, clock, seed, null, pub.verifier)
+        assertEquals(6L, (restarted.restore() as IndexState.Ready).index.sequence)
+    }
+
+    @Test fun newerRootSignedKeysPersistWhenIndexDownloadFails() = runBlocking {
+        val old = pub.ci
+        serve(pub.index(5), pub.keys(1))
+        val backing = MemoryDocumentStore()
+        val initial = IndexRegistry(http, backing, clock, pub.bundle(indexSeq = 1), src, pub.verifier)
+        assertEquals(5L, (initial.refresh() as IndexState.Ready).index.sequence)
+
+        val next = Signer()
+        val keys = pub.keys(2, active = listOf(next), revoked = listOf(old))
+        val keysOnly = FakeHttp()
+        keysOnly.serve(src.keys, keys.first)
+        keysOnly.serve(src.keysSig, keys.second)
+        val refreshing = IndexRegistry(keysOnly, backing, clock, pub.bundle(indexSeq = 1), src, pub.verifier)
+        val failedFetch = failed(refreshing.refresh())
+        assertEquals(FetchFailure.HTTP_ERROR, failedFetch.failure)
+        assertEquals(5L, failedFetch.last?.sequence)
+        assertEquals(listOf(src.keys, src.keysSig, src.index), keysOnly.requests.map { it.url })
+
+        val restarted = IndexRegistry(http, backing, clock, pub.bundle(indexSeq = 1), null, pub.verifier)
+        assertEquals(IndexFailure.REVOKED_KEY, failed(restarted.restore()).verdict)
+        assertNull(restarted.installableIndex())
+    }
+
+    @Test fun revokedSignerBecomesNonInstallableBeforeIndexFetchIsCancelled() = runBlocking {
+        val old = pub.ci
+        serve(pub.index(5), pub.keys(1))
+        assertTrue(registry().refresh() is IndexState.Ready)
+
+        val next = Signer()
+        val keys = pub.keys(2, active = listOf(next), revoked = listOf(old))
+        val keyFetcher = FakeHttp().also {
+            it.serve(src.keys, keys.first)
+            it.serve(src.keysSig, keys.second)
+        }
+        val cancelAtIndex = object : HttpFetcher {
+            override suspend fun get(url: String, etag: String?, rangeFrom: Long?): HttpResponse {
+                if (url == src.index) throw CancellationException("cancel after revocation")
+                return keyFetcher.get(url, etag, rangeFrom)
+            }
+        }
+        val refreshing = IndexRegistry(cancelAtIndex, store, clock, pub.bundle(indexSeq = 1), src, pub.verifier)
+        var cancelled = false
+        try { refreshing.refresh() } catch (e: CancellationException) { cancelled = true }
+
+        assertTrue(cancelled)
+        assertEquals(IndexFailure.REVOKED_KEY, failed(refreshing.index.value).verdict)
+        assertNull(refreshing.installableIndex())
+    }
+
+    @Test fun highWaterWithInvalidRootSignatureFailsClosed() = runBlocking {
+        val (keys, signature) = pub.keys(1)
+        val badSignature = signature.copyOf().also { it[0] = (it[0].toInt() xor 1).toByte() }
+        val doc = """{"schema":1,"index_sequence":1,"keys_sequence":1,"keys":"${Base64.getEncoder().encodeToString(keys)}","keys_sig":"${Base64.getEncoder().encodeToString(badSignature)}"}"""
+        store.write(IndexRegistry.HIGH_WATER_PATH, doc.toByteArray())
+
+        val restarted = registry(sources = null)
+        assertEquals(IndexFailure.BAD_KEYS_FILE, failed(restarted.restore()).verdict)
+        assertNull(restarted.installableIndex())
+    }
+
+    @Test fun customIndexVerifierCanProvideSeparateRootKeysCapability() = runBlocking {
+        val customIndexVerifier = object : IndexVerifier by pub.verifier {}
+        val rootKeysVerifier = RootKeysVerifier { keys, signature ->
+            when (val result = pub.verifier.verifyKeys(keys, signature)) {
+                is MinisignIndexVerifier.KeysVerdict.Ok -> result.keys
+                is MinisignIndexVerifier.KeysVerdict.Bad -> null
+            }
+        }
+        val custom = IndexRegistry(
+            http, MemoryDocumentStore(), clock, pub.bundle(indexSeq = 1), null, customIndexVerifier,
+            rootKeysVerifier = rootKeysVerifier,
+        )
+
+        assertTrue(custom.restore() is IndexState.Ready)
+        assertTrue(custom.restore() is IndexState.Ready)
+    }
+
+    @Test fun customIndexVerifierWithoutRootKeysCapabilityFailsAtConstruction() {
+        val customIndexVerifier = object : IndexVerifier by pub.verifier {}
+        val error = runCatching {
+            IndexRegistry(http, MemoryDocumentStore(), clock, pub.bundle(indexSeq = 1), null, customIndexVerifier)
+        }.exceptionOrNull()
+
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(error?.message?.contains("RootKeysVerifier") == true)
+    }
+
     @Test fun theShippedSeedRestoresWithTheCompiledRoot() = runBlocking {
         val seed = IndexBundle(RepoFiles.bundled("index.json"), RepoFiles.bundled("index.json.minisig"), RepoFiles.bundled("keys.json"), RepoFiles.bundled("keys.json.minisig"))
         val r = IndexRegistry(http, store, clock, seed, null, TrustRoots.indexVerifier())
@@ -189,5 +389,12 @@ class IndexRegistryTest {
         assertEquals("io.github.udhaykumarbala.retro", r.module("retro")?.pkg?.value)
         assertEquals(6, s.index.sequence)
         assertEquals(6, s.index.modules.size)
+    }
+}
+
+private class FailCacheWriteStore(private val delegate: DocumentStore) : DocumentStore by delegate {
+    override suspend fun write(path: String, bytes: ByteArray) {
+        if (path == IndexRegistry.CACHE_PATH) throw IOException("cache write unavailable")
+        delegate.write(path, bytes)
     }
 }
