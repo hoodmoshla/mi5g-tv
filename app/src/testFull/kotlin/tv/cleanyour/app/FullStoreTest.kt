@@ -5,6 +5,7 @@ import android.app.job.JobInfo
 import android.app.job.JobScheduler
 import androidx.test.core.app.ApplicationProvider
 import java.io.ByteArrayInputStream
+import java.io.InputStream
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Test
@@ -44,6 +45,31 @@ class FullStoreTest {
             urls += url
             return HttpResponse(code, null, ByteArrayInputStream(body.encodeToByteArray()), body.length.toLong())
         }
+    }
+
+    private class OneStream(private val stream: InputStream, private val length: Long? = null) : HttpFetcher {
+        override suspend fun get(url: String, etag: String?, rangeFrom: Long?): HttpResponse =
+            HttpResponse(200, null, stream, length)
+    }
+
+    private class CountingInputStream(private val data: ByteArray) : InputStream() {
+        var bytesRead = 0
+            private set
+        var closed = false
+            private set
+
+        override fun read(): Int = if (bytesRead == data.size) -1 else data[bytesRead++].toInt() and 0xff
+
+        override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+            if (length == 0) return 0
+            if (bytesRead == data.size) return -1
+            val count = minOf(length, data.size - bytesRead)
+            data.copyInto(buffer, offset, bytesRead, bytesRead + count)
+            bytesRead += count
+            return count
+        }
+
+        override fun close() { closed = true }
     }
 
     @Test fun thisIsTheFullBuild() {
@@ -105,6 +131,26 @@ class FullStoreTest {
 
         g.scheduleUpdateChecks(false)
         assertTrue(scheduler.allPendingJobs.none { it.service.className == AppUpdateJobService::class.java.name })
+    }
+
+    @Test fun theUpdateCheckNeverOffersOlderOrMalformedVersions() = runBlocking {
+        assertEquals("", Store.updateChecker(OneAnswer(200, """{"tag_name":"v1.4.9"}""")).latestNewerThan("1.5.0"))
+        assertEquals("1.10.0", Store.updateChecker(OneAnswer(200, """{"tag_name":"v1.10.0"}""")).latestNewerThan("1.9.0"))
+        assertEquals(null, Store.updateChecker(OneAnswer(200, """{"tag_name":"v1.5.0-beta"}""")).latestNewerThan("1.4.0"))
+    }
+
+    @Test fun oversizedReleaseMetadataWithUnknownLengthIsReadOnlyToTheCap() = runBlocking {
+        val stream = CountingInputStream(ByteArray(Store.MAX_RELEASE_JSON_BYTES + 100) { 'x'.code.toByte() })
+        assertEquals(null, Store.updateChecker(OneStream(stream)).latestNewerThan("0.1.0"))
+        assertEquals(Store.MAX_RELEASE_JSON_BYTES + 1, stream.bytesRead)
+        assertTrue(stream.closed)
+    }
+
+    @Test fun oversizedReleaseMetadataWithKnownLengthIsRejectedWithoutReading() = runBlocking {
+        val stream = CountingInputStream(ByteArray(32) { 'x'.code.toByte() })
+        assertEquals(null, Store.updateChecker(OneStream(stream, Store.MAX_RELEASE_JSON_BYTES.toLong() + 1)).latestNewerThan("0.1.0"))
+        assertEquals(0, stream.bytesRead)
+        assertTrue(stream.closed)
     }
 
     @Test fun softwareUpdatesStayTheOwnersChoice() {

@@ -1,18 +1,18 @@
 package tv.cleanyour.app
 
-import tv.cleanyour.core.flows.StoreRules
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import org.json.JSONObject
 import tv.cleanyour.core.flows.AppUpdateAsset
 import tv.cleanyour.core.flows.AppUpdateRelease
 import tv.cleanyour.core.flows.AppUpdateReleaseSource
 import tv.cleanyour.core.flows.SemanticVersion
+import tv.cleanyour.core.flows.StoreRules
 import tv.cleanyour.core.flows.UpdateChecker
 import tv.cleanyour.core.model.Sha256
 import tv.cleanyour.core.registry.ArtifactFetcher
 import tv.cleanyour.core.registry.HttpFetcher
 import tv.cleanyour.core.trust.DownloadHosts
-import org.json.JSONObject
-import java.io.ByteArrayOutputStream
-import java.io.InputStream
 
 // The full build (GitHub and F-Droid, STORES-PLAN 1): everything the app did before the store
 // flavours, unchanged.
@@ -27,10 +27,22 @@ object Store : StorePorts {
     // used later as a link or download, and ignore drafts/prereleases even if GitHub returns one.
     override fun updateReleaseSource(http: HttpFetcher) = AppUpdateReleaseSource {
         val response = http.get(RELEASES_URL, null, null)
-        if (response.code != 200) { response.body?.close(); return@AppUpdateReleaseSource null }
-        val bytes = response.body?.use { readBounded(it, MAX_RELEASE_JSON_BYTES) } ?: return@AppUpdateReleaseSource null
-        val json = runCatching { JSONObject(bytes.decodeToString()) }.getOrNull() ?: return@AppUpdateReleaseSource null
-        if (json.optBoolean("draft", false) || json.optBoolean("prerelease", false)) return@AppUpdateReleaseSource null
+        if (response.code != 200) {
+            response.body?.close()
+            return@AppUpdateReleaseSource null
+        }
+        val contentLength = response.length
+        if (contentLength != null && contentLength > MAX_RELEASE_JSON_BYTES.toLong()) {
+            response.body?.close()
+            return@AppUpdateReleaseSource null
+        }
+        val bytes = response.body?.use { readBounded(it, MAX_RELEASE_JSON_BYTES) }
+            ?: return@AppUpdateReleaseSource null
+        val json = runCatching { JSONObject(bytes.decodeToString()) }.getOrNull()
+            ?: return@AppUpdateReleaseSource null
+        if (json.optBoolean("draft", false) || json.optBoolean("prerelease", false)) {
+            return@AppUpdateReleaseSource null
+        }
         val rawTag = json.optString("tag_name").trim()
         val version = rawTag.removePrefix("v").removePrefix("V")
         val parsedVersion = SemanticVersion.parse(version) ?: return@AppUpdateReleaseSource null
@@ -60,7 +72,8 @@ object Store : StorePorts {
         )
     }
 
-    // Kept as a small adapter for the existing settings flow and its store tests.
+    // Kept as a small adapter for the existing settings flow and its store tests. SemanticVersion
+    // comparison prevents downgrades and rejects malformed or prerelease versions.
     override fun updateChecker(http: HttpFetcher) = UpdateChecker { current ->
         val release = updateReleaseSource(http).latest() ?: return@UpdateChecker null
         if (SemanticVersion.isNewer(release.version, current)) release.version else ""
@@ -70,7 +83,7 @@ object Store : StorePorts {
 
     const val RELEASES_URL = "https://api.github.com/repos/al3nkboot/mi5g-tv/releases/latest"
     const val RELEASE_PAGE = "https://github.com/al3nkboot/mi5g-tv/releases"
-    private const val MAX_RELEASE_JSON_BYTES = 512 * 1024
+    internal const val MAX_RELEASE_JSON_BYTES = 512 * 1024
     private const val MAX_UPDATE_APK_BYTES = 100L * 1024 * 1024
 
     private fun readBounded(input: InputStream, limit: Int): ByteArray? {
@@ -78,12 +91,12 @@ object Store : StorePorts {
         val buffer = ByteArray(8 * 1024)
         var count = 0
         while (true) {
-            val read = input.read(buffer)
-            if (read < 0) break
-            count += read
-            if (count > limit) return null
+            val remaining = limit - count
+            val read = input.read(buffer, 0, minOf(buffer.size, remaining + 1))
+            if (read < 0) return output.toByteArray()
+            if (read > remaining) return null
             output.write(buffer, 0, read)
+            count += read
         }
-        return output.toByteArray()
     }
 }
