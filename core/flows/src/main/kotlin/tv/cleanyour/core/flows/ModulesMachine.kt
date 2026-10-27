@@ -327,7 +327,7 @@ class ModulesMachine(
             } else null
         val r = TvWriter(d).write(tvId, PlanRequest.RemoveModule(m.pkg), preflight = preflight)
         if (r is WriteResult.Done) {
-            if (dnsRestore == PrivateDnsRestoreResult.RESTORED && !d.privateDns.retireBackup(tvId)) {
+            if ((dnsRestore == PrivateDnsRestoreResult.RESTORED || dnsRestore == PrivateDnsRestoreResult.USER_SETTINGS_PRESERVED) && !d.privateDns.retireBackup(tvId)) {
                 effect(ManageEffect.Snackbar(SnackKind.PRIVATE_DNS_BACKUP_RETAINED, m.name, false))
             } else if (dnsRestore == PrivateDnsRestoreResult.NO_BACKUP) {
                 effect(ManageEffect.Snackbar(SnackKind.PRIVATE_DNS_NO_BACKUP, m.name, false))
@@ -339,7 +339,7 @@ class ModulesMachine(
             }
         } else if (dnsRestoreFailed) {
             effect(ManageEffect.Snackbar(SnackKind.PRIVATE_DNS_RESTORE_FAILED, m.name, false))
-        } else if (dnsRestore == PrivateDnsRestoreResult.RESTORED) {
+        } else if (dnsRestore == PrivateDnsRestoreResult.RESTORED || dnsRestore == PrivateDnsRestoreResult.USER_SETTINGS_PRESERVED) {
             effect(ManageEffect.Snackbar(SnackKind.PRIVATE_DNS_REMOVAL_FAILED, m.name, false))
         }
         send(Removing(null))

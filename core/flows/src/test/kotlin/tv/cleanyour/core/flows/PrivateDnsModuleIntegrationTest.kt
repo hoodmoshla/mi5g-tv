@@ -25,7 +25,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class PrivateDnsModuleIntegrationTest {
-    @Test fun restoreIsGatedAndAFailedRestorePreventsRemovalButCanBeRetried() = runTest {
+    @Test fun restoreIsGatedAndFailedRestoreBlocksRemovalButLaterUserChoiceIsPreserved() = runTest {
         val h = Harness()
         val tv = h.knownTv()
         val pkg = PackageName("com.midroid.mi5gtv.dns")
@@ -89,11 +89,13 @@ class PrivateDnsModuleIntegrationTest {
         assertEquals("dns.adguard-dns.com", settings["private_dns_specifier"])
 
         failRestoreMode = false
+        settings["private_dns_mode"] = "hostname"
+        settings["private_dns_specifier"] = "dns.google"
         machine.dispatch(ModulesIntent.Remove("adguard-dns"))
         settle()
         assertTrue(h.engine.calls.any { it is FakeEngine.Call.Start })
-        assertEquals("off", settings["private_dns_mode"])
-        assertEquals(null, settings["private_dns_specifier"])
+        assertEquals("hostname", settings["private_dns_mode"])
+        assertEquals("dns.google", settings["private_dns_specifier"])
         assertIs<RunState.Finished>(h.engine.runState(tv.id).value)
     }
 }

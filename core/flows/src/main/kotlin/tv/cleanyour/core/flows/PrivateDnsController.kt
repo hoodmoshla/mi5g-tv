@@ -85,14 +85,24 @@ class PrivateDnsController(private val documents: DocumentStore) {
         }
     }
 
-    /** Restores the saved settings before removing the module; the caller retires the backup only after removal succeeds. */
+    /** Restores the saved settings before removal unless an active install's settings were changed by the user. */
     suspend fun restoreBeforeRemoval(tvId: TvId, session: TvSession): PrivateDnsRestoreResult = lock(tvId).withLock {
         when (val stored = readBackup(tvId)) {
             BackupState.Missing -> PrivateDnsRestoreResult.NO_BACKUP
             BackupState.Invalid -> PrivateDnsRestoreResult.FAILED
             is BackupState.Present -> when (stored.value.lifecycle) {
                 BackupLifecycle.CONSUMED -> PrivateDnsRestoreResult.NO_BACKUP
-                BackupLifecycle.ACTIVE, BackupLifecycle.RESTORE_PENDING -> if (restoreSettings(session, stored.value.snapshot)) {
+                BackupLifecycle.ACTIVE -> {
+                    val current = readSettings(session) ?: return@withLock PrivateDnsRestoreResult.FAILED
+                    if (current != ADGUARD_SETTINGS && current != stored.value.snapshot) {
+                        PrivateDnsRestoreResult.USER_SETTINGS_PRESERVED
+                    } else if (restoreSettings(session, stored.value.snapshot)) {
+                        PrivateDnsRestoreResult.RESTORED
+                    } else {
+                        PrivateDnsRestoreResult.FAILED
+                    }
+                }
+                BackupLifecycle.RESTORE_PENDING -> if (restoreSettings(session, stored.value.snapshot)) {
                     PrivateDnsRestoreResult.RESTORED
                 } else {
                     PrivateDnsRestoreResult.FAILED
@@ -280,4 +290,4 @@ class PrivateDnsController(private val documents: DocumentStore) {
 }
 
 enum class PrivateDnsApplyResult { APPLIED, NOT_APPLIED, RESTORE_PENDING }
-enum class PrivateDnsRestoreResult { RESTORED, NO_BACKUP, FAILED }
+enum class PrivateDnsRestoreResult { RESTORED, USER_SETTINGS_PRESERVED, NO_BACKUP, FAILED }
