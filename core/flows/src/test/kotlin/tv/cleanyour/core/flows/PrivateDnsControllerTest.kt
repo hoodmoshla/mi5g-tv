@@ -30,6 +30,20 @@ class PrivateDnsControllerTest {
         assertEquals(PrivateDnsRestoreResult.NO_BACKUP, controller.restoreBeforeRemoval(tv.session.tvId, tv.session))
     }
 
+    @Test fun savedBackupCanBeRestoredByANewControllerInstance() = runTest {
+        val tv = DnsTv(mode = "opportunistic", specifier = "old.example")
+        val store = MemoryDocumentStore()
+        val installerController = PrivateDnsController(store)
+        val removerController = PrivateDnsController(store)
+
+        assertEquals(PrivateDnsApplyResult.APPLIED, installerController.applyAdGuard(tv.session.tvId, tv.session))
+        assertEquals(PrivateDnsRestoreResult.RESTORED, removerController.restoreBeforeRemoval(tv.session.tvId, tv.session))
+        assertEquals("opportunistic", tv.settings[MODE])
+        assertEquals("old.example", tv.settings[SPECIFIER])
+        assertTrue(removerController.retireBackup(tv.session.tvId))
+        assertEquals(PrivateDnsRestoreResult.NO_BACKUP, PrivateDnsController(store).restoreBeforeRemoval(tv.session.tvId, tv.session))
+    }
+
     @Test fun unreadableOrUnknownOriginalSettingsFailClosedWithoutWriting() = runTest {
         val unreadable = DnsTv(mode = "off", specifier = null).apply { failRead = MODE }
         val unreadableController = PrivateDnsController(MemoryDocumentStore())
