@@ -159,6 +159,8 @@ object Redactor {
 object CytLog {
     private const val TAG = "CleanYourTv"
     private const val MAX_FILE = 1_000_000L
+    private const val MAX_LINE_CHARS = 2_000
+    private const val TRUNCATION_MARKER = "…[truncated]"
     private const val FILES = 5
     private var dir: File? = null
     private val ring = ArrayDeque<String>()
@@ -172,17 +174,26 @@ object CytLog {
 
     @Synchronized
     private fun write(level: String, message: String, toLogcat: Boolean) {
-        val line = "${System.currentTimeMillis()} $level ${Redactor.redact(message)}"
+        val prefix = "${System.currentTimeMillis()} $level "
+        // Redact before truncating so cutting through a token cannot leave an unredacted fragment.
+        val redacted = Redactor.redact(message)
+        val contentLimit = MAX_LINE_CHARS - prefix.length
+        val content = if (redacted.length > contentLimit) {
+            val keep = (contentLimit - TRUNCATION_MARKER.length).coerceAtLeast(0)
+            redacted.take(keep) + TRUNCATION_MARKER.take(contentLimit)
+        } else redacted
+        val line = prefix + content
         if (toLogcat) Log.i(TAG, line)
         ring.addLast(line)
         while (ring.size > 2_000) ring.removeFirst()
         val d = dir ?: return
         runCatching {
             val f = File(d, "session-0.log")
-            if (f.length() > MAX_FILE) {
+            val bytes = (line + "\n").toByteArray(Charsets.UTF_8)
+            if (f.length() + bytes.size > MAX_FILE) {
                 for (n in FILES - 1 downTo 1) File(d, "session-${n - 1}.log").takeIf { it.exists() }?.renameTo(File(d, "session-$n.log"))
             }
-            File(d, "session-0.log").appendText(line + "\n")
+            File(d, "session-0.log").appendBytes(bytes)
         }
     }
 
