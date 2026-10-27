@@ -21,6 +21,12 @@
     <string name="home_row_dock">شريط التطبيقات</string>
     <string name="home_row_dock_rows">{names}، بالإضافة إلى {count, plural, one {تطبيق واحد (#)} two {تطبيقين (#)} few {# تطبيقات} many {# تطبيقًا} other {# تطبيق}} بالأسفل</string>
     <string name="home_row_look">المظهر</string>
+    <string name="home_row_hidden_apps">التطبيقات المخفية</string>
+    <string name="home_row_hidden_apps_count">المخفية: {count}</string>
+    <string name="home_hidden_apps_title">إخفاء التطبيقات</string>
+    <string name="home_hidden_apps_body">فعّل المفتاح لإخفاء الاختصار وأوقفه لإظهاره. لا يؤدي ذلك إلى تعطيل التطبيق أو إلغاء تثبيته.</string>
+    <string name="home_hidden_apps_reset">استخدام افتراضيات المظهر</string>
+    <string name="home_hidden_apps_empty">لا توجد تطبيقات قابلة للتشغيل لإدارتها.</string>
     <string name="home_row_stock">استخدام الشاشة الرئيسية الأصلية للتلفاز</string>
     <string name="home_row_stock_note">يعيد الشاشة الرئيسية الأصلية للتلفاز، مع بقاء شاشتنا مثبّتة لتتمكن من التبديل إليها مجددًا.</string>
     <string name="home_drift_banner">تغيرت إعدادات الشاشة الرئيسية على التلفاز منذ أن ضبطتها.</string>

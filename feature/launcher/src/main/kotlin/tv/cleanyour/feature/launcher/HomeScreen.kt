@@ -55,6 +55,7 @@ import tv.cleanyour.ui.design.component.SheetHeader
 import tv.cleanyour.ui.design.component.TertiaryButton
 import tv.cleanyour.ui.design.component.ThemeOption
 import tv.cleanyour.ui.design.component.ThemePicker
+import tv.cleanyour.ui.design.component.SwitchRow
 import tv.cleanyour.ui.design.component.themeSwatch
 import tv.cleanyour.ui.design.icon.CytIcons
 import tv.cleanyour.ui.design.theme.Glow
@@ -68,6 +69,7 @@ fun HomeScreen(state: HomeScreenState, onIntent: (HomeScreenIntent) -> Unit, onB
     if (notOnTv != null) { NotOnTvScreen(state.tvName, notOnTv, state.busy, onIntent, onBack, modifier); return }
     var dockOpen by rememberSaveable { mutableStateOf(false) }
     var lookOpen by rememberSaveable { mutableStateOf(false) }
+    var hiddenAppsOpen by rememberSaveable { mutableStateOf(false) }
     val busy = state.busy
     ScreenScaffold(Glow.Tv, modifier, topBar = { CytTopBar(onBack = onBack) }) {
         ScreenTitle(stringResource(R.string.home_title), Modifier.padding(top = 20.dp))
@@ -89,6 +91,10 @@ fun HomeScreen(state: HomeScreenState, onIntent: (HomeScreenIntent) -> Unit, onB
             ListDivider()
             val theme = state.themes.firstOrNull { it.id == state.themeId }?.name ?: stringResource(R.string.theme_default)
             ListRow(stringResource(R.string.home_row_look), subtitle = theme, onClick = if (busy == null) ({ lookOpen = true }) else null)
+            ListDivider()
+            val hiddenCount = state.apps.count { it.pkg in state.hiddenApps }
+            ListRow(stringResource(R.string.home_row_hidden_apps), subtitle = msg(R.string.home_row_hidden_apps_count, "count" to hiddenCount),
+                onClick = if (busy == null) ({ hiddenAppsOpen = true }) else null)
         }
         // Launcher 2.4: Launcher settings on the TV can override what the phone sent; the phone
         // cannot read them, so the rows above show what config.json says. Launcher 2.5 also edits the
@@ -110,6 +116,8 @@ fun HomeScreen(state: HomeScreenState, onIntent: (HomeScreenIntent) -> Unit, onB
         }
     }
     if (dockOpen) DockSheet(state.dock, state.apps, state.columns, onDone = { onIntent(HomeScreenIntent.SetDock(it)); dockOpen = false }, onDismiss = { dockOpen = false })
+    if (hiddenAppsOpen) HiddenAppsSheet(state.apps, state.hiddenApps,
+        onDone = { onIntent(HomeScreenIntent.SetHiddenApps(it)); hiddenAppsOpen = false }, onDismiss = { hiddenAppsOpen = false })
     if (lookOpen) CytBottomSheet({ lookOpen = false }) {
         LookContent(state) { onIntent(HomeScreenIntent.SetTheme(it)); lookOpen = false }
     }
@@ -250,6 +258,53 @@ fun DockSheet(current: List<AppChoice>, apps: List<AppChoice>, columns: Int, onD
             Column(Modifier.verticalScroll(scroll)) { DockContent(state, apps, { onDone(state.apps.map { PackageName(it.key) }) }, scroll, undo) }
             UndoSnackbarHost(undo, Modifier.align(Alignment.BottomCenter))
         }
+    }
+}
+
+// The switch controls only the launcher's hidden_apps list: it never disables or uninstalls an app.
+@Composable
+internal fun HiddenAppsSheet(
+    apps: List<AppChoice>,
+    currentHidden: List<PackageName>,
+    onDone: (List<PackageName>?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var hidden by remember(currentHidden) { mutableStateOf(currentHidden.toSet()) }
+    CytBottomSheet(onDismiss) {
+        Column(Modifier.verticalScroll(rememberScrollState())) {
+            HiddenAppsContent(apps, hidden,
+                onToggle = { pkg, checked -> hidden = if (checked) hidden + pkg else hidden - pkg },
+                onDone = onDone)
+        }
+    }
+}
+
+@Composable
+internal fun ColumnScope.HiddenAppsContent(
+    apps: List<AppChoice>,
+    currentHidden: Set<PackageName>,
+    onToggle: (PackageName, Boolean) -> Unit,
+    onDone: (List<PackageName>?) -> Unit,
+) {
+    SheetHeader(stringResource(R.string.home_hidden_apps_title), subtitle = stringResource(R.string.home_hidden_apps_body))
+    if (apps.isEmpty()) {
+        Body(stringResource(R.string.home_hidden_apps_empty), Modifier.padding(top = 16.dp, start = 4.dp, end = 4.dp))
+    } else {
+        ListGroup(Modifier.padding(top = 16.dp)) {
+            apps.forEachIndexed { index, app ->
+                if (index > 0) ListDivider()
+                SwitchRow(
+                    title = app.name,
+                    subtitle = app.pkg.value,
+                    checked = app.pkg in currentHidden,
+                    onCheckedChange = { checked -> onToggle(app.pkg, checked) },
+                )
+            }
+        }
+    }
+    ActionColumn(Modifier.padding(top = 20.dp)) {
+        PrimaryButton(stringResource(R.string.action_done), { onDone(currentHidden.sortedBy { it.value }) })
+        TertiaryButton(stringResource(R.string.home_hidden_apps_reset), { onDone(null) }, quiet = true)
     }
 }
 

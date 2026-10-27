@@ -720,10 +720,13 @@ class SetupMachine(
             keepDebuggingOn = draft.keepDebuggingOn,
             wizardWifi = wifi,
         )
-        val cards = Cards.of(deps.homePrefs?.let { attempt { it.load(record.id) }.getOrNull() }?.cards, snap.launcherOverlay, Cards.SETUP_DEFAULT)
-        val look = if (!installHome) null else attempt { Look.encode(deps.encoder, deps.blobs, theme, dock, cards) }
+        val homeChoice = deps.homePrefs?.let { attempt { it.load(record.id) }.getOrNull() }
+        val cards = Cards.of(homeChoice?.cards, snap.launcherOverlay, Cards.SETUP_DEFAULT)
+        val resetHidden = homeChoice?.hiddenAppsResetToTheme == true
+        val hiddenOverride = HiddenAppChoices.explicit(homeChoice?.hiddenApps, snap.launcherOverlay, resetHidden)
+        val look = if (!installHome) null else attempt { Look.encode(deps.encoder, deps.blobs, theme, dock, cards, hiddenOverride) }
             .onFailure { deps.log.line("setup: the look could not be encoded, planned without it") }.getOrNull()
-        setupHome = look?.let { it.digest to HomeChoice(it.doc.dockApps.orEmpty(), draft.themeId, cards) }
+        setupHome = look?.let { it.digest to HomeChoice(it.doc.dockApps.orEmpty(), draft.themeId, cards, hiddenOverride, resetHidden) }
         // RFC-CURTAIN-1: the TV shows the progress unless Custom switched it off (Simple never shows
         // the switch). An asset that does not match its pin is never offered; the plan goes without it.
         val showOnTv = draft.level == Level.SIMPLE || draft.curtain

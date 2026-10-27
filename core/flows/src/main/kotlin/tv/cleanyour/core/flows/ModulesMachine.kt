@@ -186,8 +186,11 @@ class ModulesMachine(
         val choice = d.homePrefs.load(tvId)
         if (Cards.current(d, tvId, choice, overlay)) return null
         val theme = choice?.themeId?.let { id -> d.themes.bundled().firstOrNull { it.id == id } }
-        val look = Look.encode(d.encoder, d.blobs, theme, choice?.dock.orEmpty(), cards = true)
-        return look to HomeChoice(look.doc.dockApps.orEmpty(), theme?.id, cards = true)
+        val resetHidden = choice?.hiddenAppsResetToTheme == true
+        val hiddenOverride = HiddenAppChoices.explicit(choice?.hiddenApps, overlay, resetHidden)
+        val look = Look.encode(d.encoder, d.blobs, theme, choice?.dock.orEmpty(), cards = true, hiddenApps = hiddenOverride)
+        return look to HomeChoice(look.doc.dockApps.orEmpty(), theme?.id, cards = true,
+            hiddenApps = hiddenOverride, hiddenAppsResetToTheme = resetHidden)
     }
 
     private suspend fun keepCardsOn(pushed: Pair<Look, HomeChoice>) {

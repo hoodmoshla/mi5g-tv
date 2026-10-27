@@ -26,6 +26,12 @@
     <!-- The Dock row's subtitle when rows sit under the dock: the dock's apps, then how many more -->
     <string name="home_row_dock_rows">{names}, plus {count, plural, one {# app} other {# apps}} below</string>
     <string name="home_row_look">Look</string>
+    <string name="home_row_hidden_apps">Hidden apps</string>
+    <string name="home_row_hidden_apps_count">Hidden: {count}</string>
+    <string name="home_hidden_apps_title">Hide apps</string>
+    <string name="home_hidden_apps_body">Turn a switch on to hide an app shortcut and off to show it. This does not disable or uninstall the app.</string>
+    <string name="home_hidden_apps_reset">Use look defaults</string>
+    <string name="home_hidden_apps_empty">There are no launchable apps to manage.</string>
     <string name="home_row_stock">Use the TV\'s own home screen</string>
     <string name="home_row_stock_note">Brings back the TV\'s own home screen. Ours stays installed, so you can switch again.</string>
     <string name="home_drift_banner">The home screen settings on the TV changed since you set them.</string>
