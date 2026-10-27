@@ -58,6 +58,12 @@ class RedactorTest {
         assertFalse("HomeNet" in out)
     }
 
+    @Test fun wifiNamesWithSpacesAndCommasAreRedactedCompletely() {
+        val text = """ssid="Home Network, Guest", wifi name='Family Room', ssid:Office, Lobby Network; signal=-50"""
+        assertEquals("ssid=[wifi], wifi name=[wifi], ssid:[wifi]; signal=-50", Redactor.redact(text))
+        assertEquals("ssid=[wifi]\nsignal=-50", Redactor.redact("ssid=Home Network\nsignal=-50"))
+    }
+
     // 0.3.2 B3: the new log lines stay readable after the redactor (codes, models, codenames and the
     // failed op's package), while an address or a serial in the TV's own stderr still goes.
     @Test fun theReadableLogLinesSurviveTheRedactor() {

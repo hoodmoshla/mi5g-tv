@@ -93,6 +93,12 @@ class LogCodesTest {
         assertTrue(out.length <= 160)
     }
 
+    @Test fun cleanRedactsWholeWifiNamesWithSpacesAndCommas() {
+        val text = """ssid="Home Network, Guest", wifi name='Family Room', ssid:Office, Lobby Network; signal=-50"""
+        assertEquals("ssid=[wifi], wifi name=[wifi], ssid:[wifi]; signal=-50", LogCodes.clean(text))
+        assertEquals("ssid=[wifi] signal=-50 status=connected", LogCodes.clean("ssid=Home Network\nsignal=-50\nstatus=connected"))
+    }
+
     // 0.3.3 D3 (issue #10): the report's own scrub keeps build strings whole ("V816.0.11.0.UZFAABX"
     // became "V816.[address].1.UZFAABX" in 0.3.2) and still masks real addresses.
     @Test fun buildStringsStayWholeAndAddressesGo() {

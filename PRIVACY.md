@@ -49,7 +49,7 @@ services.
 - **Your choices**, such as the dock and the look you picked, and the TVs you have set up.
 - **The app's diagnostics log.** A plain text record of what the app did (connecting, reading the
   TV, each step and how it went). IPv4 addresses are masked except for the last octet; IPv6 and
-  MAC addresses, serial numbers, keys and pairing codes are redacted. It stays on your phone.
+  MAC addresses, Wi-Fi names, serial numbers, keys and pairing codes are redacted. It stays on your phone.
   "Delete everything" in the app's Settings deletes it, and so does clearing the app's storage.
   It leaves your phone only if you share a report.
 

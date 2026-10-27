@@ -22,7 +22,11 @@ object Redactor {
     private val SERIAL = Regex("(?i)(serial(?:no)?|ro\\.serialno|ro\\.boot\\.serialno)([\"'\\]\\s:=\\[]+)([A-Za-z0-9]{4,})")
     private val TV_ID = Regex("\\b[0-9a-f]{16}\\b")
     private val CODE = Regex("(?<![\\d.])\\d{6}(?![\\d.])")
-    private val SSID = Regex("(?i)(ssid|wifi[ _-]?name)([\"'\\s:=]+)([^,;\\s\"']+)")
+    // Quoted names may contain spaces/commas; unquoted values stop at the next field to preserve the log.
+    private const val SSID_FIELD_KEY = "(?:[A-Za-z_][A-Za-z0-9_.-]*|wifi[ _-]?name)"
+    private val SSID = Regex(
+        """(?i)(ssid|wifi[ _-]?name)([ \t]*[:=][ \t]*|[ \t]+)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^;\r\n]+?)(?=,\s*$SSID_FIELD_KEY\s*[:=]|;|\r|\n|$|\s+$SSID_FIELD_KEY\s*[:=])"""
+    )
     private val MAC = Regex(
         "(?i)(?<![A-Za-z0-9:-])(?:[0-9a-f]{2}(?::|-)){5}[0-9a-f]{2}(?![A-Za-z0-9:-])" +
             "|(?<![A-Za-z0-9.])[0-9a-f]{4}(?:\\.[0-9a-f]{4}){2}(?![A-Za-z0-9.])"
