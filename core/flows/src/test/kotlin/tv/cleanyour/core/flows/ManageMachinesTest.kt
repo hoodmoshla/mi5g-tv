@@ -1483,6 +1483,36 @@ class ManageMachinesTest {
         assertTrue(h.session.execLines.none { "settings' 'put" in it })
     }
 
+    @Test fun remoteKeyReportsTransportFailureAndAllowsRetry() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val tv = h.knownTv()
+        h.session.recording.on("'input' 'keyevent' '23'", "")
+        val tools = TvToolsMachine(h.manageDeps(), backgroundScope, tv.id)
+        settle()
+
+        h.session.failNext = AdbError.Transport.Closed
+        tools.dispatch(TvToolsIntent.PressKey(TvKeyEvent.DPAD_CENTER))
+        settle()
+        assertEquals(RemoteStatus.Failed, tools.state.value.remoteStatus)
+
+        tools.dispatch(TvToolsIntent.PressKey(TvKeyEvent.DPAD_CENTER))
+        settle()
+        assertEquals(RemoteStatus.Sent, tools.state.value.remoteStatus)
+        assertEquals(2, h.session.execLines.count { "keyevent" in it })
+    }
+
+    @Test fun remoteKeyReportsNonZeroTvExitAsFailure() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val tv = h.knownTv()
+        h.session.recording.on("'input' 'keyevent' '23'", "Permission denied", exit = 1)
+        val tools = TvToolsMachine(h.manageDeps(), backgroundScope, tv.id)
+        settle()
+
+        tools.dispatch(TvToolsIntent.PressKey(TvKeyEvent.DPAD_CENTER))
+        settle()
+        assertEquals(RemoteStatus.CommandFailed, tools.state.value.remoteStatus)
+    }
+
     @Test fun installHomeScreenFromNotOnTvInstallsAndActivatesTheLauncher() = runTest(timeout = 30.seconds) {
         val h = Harness()
         val tv = h.knownTv().copy(nickname = "AndroidTV", profileId = null).also { h.tvs.upsert(it) }

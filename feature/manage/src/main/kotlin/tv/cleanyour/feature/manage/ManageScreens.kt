@@ -1374,6 +1374,7 @@ fun TvToolsScreen(state: TvToolsState, onIntent: (TvToolsIntent) -> Unit, onBack
             RemoteStatus.Sent -> CheckLine(stringResource(R.string.tvtools_remote_sent), Modifier.padding(top = 8.dp, start = 4.dp))
             RemoteStatus.Failed -> Body(stringResource(R.string.tvtools_remote_failed), Modifier.padding(top = 8.dp, start = 4.dp), color = CytTheme.colors.danger)
             RemoteStatus.UnsupportedText -> Body(stringResource(R.string.tvtools_text_unsupported), Modifier.padding(top = 8.dp, start = 4.dp), color = CytTheme.colors.danger)
+            RemoteStatus.CommandFailed -> Body(stringResource(R.string.tvtools_remote_command_failed), Modifier.padding(top = 8.dp, start = 4.dp), color = CytTheme.colors.danger)
             RemoteStatus.Idle -> {}
         }
         if (state.textInputTooLong) {

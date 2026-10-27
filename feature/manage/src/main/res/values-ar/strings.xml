@@ -273,6 +273,7 @@
     <string name="tvtools_remote_failed">تعذّر الوصول إلى التلفاز. تحقق من الاتصال.</string>
     <string name="tvtools_text_unsupported">لم يُرسل النص. لا يستطيع إدخال النص عبر ADB كتابة محرف واحد أو أكثر من النص بأمان. استخدم لوحة المفاتيح الظاهرة على التلفاز لإدخال العربية أو المحارف غير المدعومة.</string>
     <string name="tvtools_text_too_long">لم يُرسل النص. الحد الأقصى 500 حرف؛ اختصر النص ثم أعد المحاولة.</string>
+    <string name="tvtools_remote_command_failed">أعاد التلفاز خطأً عند تنفيذ هذا الأمر.</string>
     <string name="tvtools_text_section">إرسال نص للتلفاز</string>
     <string name="tvtools_text_label">النص المراد كتابته على التلفاز</string>
     <string name="tvtools_text_send">إرسال</string>

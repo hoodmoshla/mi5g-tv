@@ -31,6 +31,7 @@ sealed interface RemoteStatus {
     data object Sent : RemoteStatus
     data object Failed : RemoteStatus
     data object UnsupportedText : RemoteStatus
+    data object CommandFailed : RemoteStatus
 }
 
 sealed interface ScreenshotStatus {
@@ -777,11 +778,13 @@ class TvToolsMachine(
             return
         }
         val res = attempt { TvShellRunner.run(session, line) }.getOrNull()
-        if (res != null && res.exit == 0) {
-            send(RemoteUpdate(RemoteStatus.Sent, clearText = clearText))
-            effect(if (clearText) ManageEffect.HapticDouble else ManageEffect.HapticLight)
-        } else {
-            send(RemoteUpdate(RemoteStatus.Failed))
+        when {
+            res == null -> send(RemoteUpdate(RemoteStatus.Failed))
+            res.exit != 0 -> send(RemoteUpdate(RemoteStatus.CommandFailed))
+            else -> {
+                send(RemoteUpdate(RemoteStatus.Sent, clearText = clearText))
+                effect(if (clearText) ManageEffect.HapticDouble else ManageEffect.HapticLight)
+            }
         }
     }
 
