@@ -52,6 +52,7 @@ data class TvAppManagerState(
     val filter: TvAppFilter = TvAppFilter.USER,
     val apps: List<TvInstalledApp> = emptyList(),
     val selectedApp: TvInstalledApp? = null,
+    val confirmingClearData: PackageName? = null,
     val confirmingUninstall: Boolean = false,
     val actionStatus: TvAppActionStatus = TvAppActionStatus.Idle,
 ) {
@@ -75,7 +76,9 @@ sealed interface TvAppManagerIntent {
     data class RestrictBackgroundApp(val pkg: PackageName) : TvAppManagerIntent
     data class DisableApp(val pkg: PackageName) : TvAppManagerIntent
     data class EnableApp(val pkg: PackageName) : TvAppManagerIntent
-    data class ClearAppData(val pkg: PackageName) : TvAppManagerIntent
+    data class AskClearAppData(val pkg: PackageName) : TvAppManagerIntent
+    data object ConfirmClearAppData : TvAppManagerIntent
+    data object CancelClearAppData : TvAppManagerIntent
     data object AskUninstall : TvAppManagerIntent
     data object CancelUninstall : TvAppManagerIntent
     data class UninstallApp(val pkg: PackageName) : TvAppManagerIntent
@@ -122,14 +125,27 @@ class TvAppManagerMachine(
         is TvAppManagerIntent.SetFilter -> state.copy(filter = event.filter)
         is TvAppManagerIntent.SelectApp -> state.copy(
             selectedApp = event.app,
+            confirmingClearData = null,
             confirmingUninstall = false,
             actionStatus = TvAppActionStatus.Idle,
         )
         TvAppManagerIntent.DismissApp -> state.copy(
             selectedApp = null,
+            confirmingClearData = null,
             confirmingUninstall = false,
         )
-        TvAppManagerIntent.AskUninstall -> state.copy(confirmingUninstall = true)
+        is TvAppManagerIntent.AskClearAppData -> {
+            val app = state.apps.firstOrNull { it.pkg == event.pkg }
+            val allowed = state.actionStatus !is TvAppActionStatus.Working &&
+                state.selectedApp?.pkg == event.pkg && app?.canClearData == true
+            state.copy(
+                confirmingClearData = event.pkg.takeIf { allowed },
+                confirmingUninstall = false,
+            )
+        }
+        TvAppManagerIntent.ConfirmClearAppData -> state.copy(confirmingClearData = null)
+        TvAppManagerIntent.CancelClearAppData -> state.copy(confirmingClearData = null)
+        TvAppManagerIntent.AskUninstall -> state.copy(confirmingClearData = null, confirmingUninstall = true)
         TvAppManagerIntent.CancelUninstall -> state.copy(confirmingUninstall = false)
         is ActionUpdate -> {
             var nextApps = if (event.removedPkg != null) state.apps.filterNot { it.pkg == event.removedPkg } else state.apps
@@ -146,6 +162,7 @@ class TvAppManagerMachine(
             state.copy(
                 apps = nextApps,
                 selectedApp = nextSelected,
+                confirmingClearData = null,
                 confirmingUninstall = false,
                 actionStatus = event.status,
             )
@@ -165,7 +182,15 @@ class TvAppManagerMachine(
             is TvAppManagerIntent.RestrictBackgroundApp -> if (!busy) scope.launch { restrictBackgroundApp(event.pkg) }
             is TvAppManagerIntent.DisableApp -> if (!busy) scope.launch { disableApp(event.pkg) }
             is TvAppManagerIntent.EnableApp -> if (!busy) scope.launch { enableApp(event.pkg) }
-            is TvAppManagerIntent.ClearAppData -> if (!busy) scope.launch { clearAppData(event.pkg) }
+            is TvAppManagerIntent.AskClearAppData -> Unit
+            TvAppManagerIntent.ConfirmClearAppData -> {
+                val pkg = before.confirmingClearData
+                val app = before.apps.firstOrNull { it.pkg == pkg }
+                if (!busy && pkg != null && before.selectedApp?.pkg == pkg && app?.canClearData == true) {
+                    scope.launch { clearAppData(pkg) }
+                }
+            }
+            TvAppManagerIntent.CancelClearAppData -> Unit
             is TvAppManagerIntent.UninstallApp -> if (!busy) scope.launch { uninstallApp(event.pkg) }
             is TvAppManagerIntent.PullApk -> if (!busy) scope.launch { pullApk(event.pkg) }
             else -> {}
@@ -389,7 +414,12 @@ class TvAppManagerMachine(
     }
 
     private suspend fun clearAppData(pkg: PackageName) {
-        val name = appNameOf(pkg)
+        val app = state.value.apps.firstOrNull { it.pkg == pkg }
+        val name = app?.name ?: d.nameOf(pkg)
+        if (app?.canClearData != true) {
+            send(ActionUpdate(TvAppActionStatus.Failed(pkg, name, TvAppActionKind.CLEAR_DATA)))
+            return
+        }
         val line = runCatching { ShellRenderer.clearPackageDataLine(pkg) }.getOrNull()
         if (line == null) {
             send(ActionUpdate(TvAppActionStatus.Failed(pkg, name, TvAppActionKind.CLEAR_DATA)))

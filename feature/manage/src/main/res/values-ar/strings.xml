@@ -273,7 +273,10 @@
     <string name="tvapps_action_launch">فتح على التلفاز</string>
     <string name="tvapps_action_pull_apk">حفظ نسخة APK في الهاتف</string>
     <string name="tvapps_action_force_stop">إيقاف إجباري</string>
-    <string name="tvapps_action_clear_data">مسح الكاش والبيانات</string>
+    <string name="tvapps_action_clear_data">مسح الكاش والبيانات…</string>
+    <string name="tvapps_clear_data_confirm_title">هل تريد مسح بيانات {name}؟</string>
+    <string name="tvapps_clear_data_confirm_body">سيحذف هذا جميع بيانات تطبيق {name} المخزّنة على التلفاز، بما فيها تسجيل الدخول والإعدادات والملفات المحلية. لا يستطيع Mi5G TV استعادتها. تابع فقط إذا كنت تقبل فقدانها.</string>
+    <string name="tvapps_clear_data_confirm_btn">مسح بيانات التطبيق</string>
     <string name="tvapps_action_uninstall">حذف نهائي للمستخدم (إزالة من التلفاز)</string>
     <string name="tvapps_uninstall_confirm_title">هل تريد إلغاء تثبيت {name}؟</string>
     <string name="tvapps_uninstall_confirm_body">سيؤدي هذا إلى إزالة {name} من التلفاز. يمكنك حفظ نسخة APK في هاتفك أولًا إذا أردت الاحتفاظ بها.</string>
@@ -333,4 +336,3 @@
     <string name="tvtools_power_done">تم التنفيذ بنجاح: {name}.</string>
     <string name="tvtools_power_failed">تعذّر التنفيذ على التلفاز: {name}.</string>
 </resources>
-

@@ -280,7 +280,10 @@
     <string name="tvapps_action_launch">Launch on TV</string>
     <string name="tvapps_action_pull_apk">Save APK backup to phone</string>
     <string name="tvapps_action_force_stop">Force stop</string>
-    <string name="tvapps_action_clear_data">Clear cache and data</string>
+    <string name="tvapps_action_clear_data">Clear cache and data…</string>
+    <string name="tvapps_clear_data_confirm_title">Clear data for {name}?</string>
+    <string name="tvapps_clear_data_confirm_body">This removes all data stored by {name} on the TV, including sign-in, settings and local files. Mi5G TV cannot restore it. Continue only if you accept losing that data.</string>
+    <string name="tvapps_clear_data_confirm_btn">Clear app data</string>
     <string name="tvapps_action_uninstall">Uninstall from TV</string>
     <string name="tvapps_uninstall_confirm_title">Uninstall {name}?</string>
     <string name="tvapps_uninstall_confirm_body">This removes {name} from the TV. You can back up its APK to your phone first if you want to keep a copy.</string>
@@ -340,4 +343,3 @@
     <string name="tvtools_power_done">Completed on TV: {name}.</string>
     <string name="tvtools_power_failed">Could not run on TV: {name}.</string>
 </resources>
-
