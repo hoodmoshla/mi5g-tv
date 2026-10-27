@@ -226,6 +226,7 @@ class ProtectedTest {
         assertEquals(listOf("settings", "get", "global", "private_dns_mode"), ShellTokens.tokenize(ShellRenderer.privateDnsModeLine().text))
         assertEquals(listOf("settings", "get", "global", "private_dns_specifier"), ShellTokens.tokenize(ShellRenderer.privateDnsSpecifierLine().text))
         assertEquals(listOf("ip", "route", "show", "default"), ShellTokens.tokenize(ShellRenderer.defaultRouteLine().text))
+        assertEquals(listOf("ping", "-c", "1", "-W", "3", "example.com"), ShellTokens.tokenize(ShellRenderer.networkDnsProbeLine().text))
         assertEquals(listOf("pm", "trim-caches", "999999999G"), ShellTokens.tokenize(ShellRenderer.trimCachesLine().text))
         assertEquals(listOf("pm", "list", "packages", "-3"), ShellTokens.tokenize(ShellRenderer.listThirdPartyPackagesLine().text))
         assertEquals(listOf("settings", "get", "global", "window_animation_scale"), ShellTokens.tokenize(ShellRenderer.getWindowAnimationScaleLine().text))

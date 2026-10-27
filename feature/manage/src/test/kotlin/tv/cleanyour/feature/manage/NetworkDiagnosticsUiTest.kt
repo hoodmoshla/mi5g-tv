@@ -14,6 +14,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import tv.cleanyour.core.flows.TvNetworkDiagnostics
 import tv.cleanyour.core.flows.TvNetworkDiagnosticsStatus
+import tv.cleanyour.core.flows.TvConnectivityProbe
 import tv.cleanyour.core.flows.TvPrivateDnsMode
 import tv.cleanyour.core.flows.TvToolsIntent
 import tv.cleanyour.core.flows.TvToolsState
@@ -38,6 +39,7 @@ class NetworkDiagnosticsUiTest {
                             privateDnsProviderHostname = null,
                             defaultGateway = "192.168.1.1",
                             networkInterface = "wlan0",
+                            connectivityProbe = TvConnectivityProbe.HOST_REPLIED,
                         ),
                         networkDiagnosticsStatus = TvNetworkDiagnosticsStatus.READY,
                     ),
@@ -51,10 +53,41 @@ class NetworkDiagnosticsUiTest {
         val dns = compose.onNodeWithText("DNS servers: 192.168.1.2, 1.1.1.1")
         dns.performScrollTo()
         dns.assertIsDisplayed()
+        val probe = compose.onNodeWithText("DNS/ICMP probe (does not test web access): The name resolved and the host replied to ping; web access is not confirmed.")
+        probe.performScrollTo()
+        probe.assertIsDisplayed()
         val readButton = compose.onNodeWithText("Read network settings")
         readButton.performScrollTo()
         readButton.performClick()
         assertEquals(1, intents.size)
         assertEquals(TvToolsIntent.RefreshNetworkDiagnostics, intents.single())
+    }
+
+    @Test
+    @Config(sdk = [35], qualifiers = "ar-rSA-w360dp-h1600dp-xhdpi")
+    fun showsArabicProbeScopeInRtl() {
+        compose.setContent {
+            CytTheme(reducedMotion = true) {
+                TvToolsScreen(
+                    state = TvToolsState(
+                        networkDiagnostics = TvNetworkDiagnostics(
+                            dnsServers = emptyList(),
+                            privateDnsMode = TvPrivateDnsMode.AUTOMATIC,
+                            privateDnsProviderHostname = null,
+                            defaultGateway = null,
+                            networkInterface = "wlan0",
+                            connectivityProbe = TvConnectivityProbe.HOST_REPLIED,
+                        ),
+                        networkDiagnosticsStatus = TvNetworkDiagnosticsStatus.READY,
+                    ),
+                    onIntent = {},
+                    onBack = {},
+                )
+            }
+        }
+        compose.waitForIdle()
+        val probe = compose.onNodeWithText("فحص DNS/ICMP (لا يختبر فتح المواقع): تم حلّ الاسم ووصل رد ping؛ لا يثبت ذلك إمكانية فتح المواقع.")
+        probe.performScrollTo()
+        probe.assertIsDisplayed()
     }
 }

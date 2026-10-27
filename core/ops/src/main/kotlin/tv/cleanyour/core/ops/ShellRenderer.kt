@@ -430,6 +430,11 @@ class ShellRenderer(private val watchdogVariant: WatchdogVariant = WatchdogVaria
         fun defaultRouteLine(): ShellLine =
             ShellLine(ShellTokens.line(listOf("ip", "route", "show", "default")))
 
+        // Read-only, one-packet check. The host and limits are constants; the command never writes
+        // settings, and no response is not treated as proof that the internet is down.
+        fun networkDnsProbeLine(): ShellLine =
+            ShellLine(ShellTokens.line(listOf("ping", "-c", "1", "-W", "3", "example.com")))
+
         fun trimCachesLine(): ShellLine =
             ShellLine(ShellTokens.line(listOf(PM, "trim-caches", "999999999G")))
 

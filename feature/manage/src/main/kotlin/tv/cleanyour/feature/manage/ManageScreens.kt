@@ -72,6 +72,7 @@ import tv.cleanyour.core.flows.RemoteStatus
 import tv.cleanyour.core.flows.ScreenshotStatus
 import tv.cleanyour.core.flows.SideloadStatus
 import tv.cleanyour.core.flows.SpeedBoostStatus
+import tv.cleanyour.core.flows.TvConnectivityProbe
 import tv.cleanyour.core.flows.TvNetworkDiagnosticsStatus
 import tv.cleanyour.core.flows.TvPrivateDnsMode
 import tv.cleanyour.core.flows.TvAppActionKind
@@ -642,9 +643,20 @@ fun TvToolsScreen(state: TvToolsState, onIntent: (TvToolsIntent) -> Unit, onBack
                     TvPrivateDnsMode.UNKNOWN -> R.string.tvtools_network_private_dns_unknown
                 },
             )
+            val connectivityProbe = stringResource(
+                when (network.connectivityProbe) {
+                    TvConnectivityProbe.HOST_REPLIED -> R.string.tvtools_network_probe_replied
+                    TvConnectivityProbe.DNS_RESOLVED_NO_REPLY -> R.string.tvtools_network_probe_resolved_no_reply
+                    TvConnectivityProbe.DNS_LOOKUP_FAILED -> R.string.tvtools_network_probe_dns_failed
+                    TvConnectivityProbe.NO_ROUTE -> R.string.tvtools_network_probe_no_route
+                    TvConnectivityProbe.UNAVAILABLE -> R.string.tvtools_network_probe_unavailable
+                    TvConnectivityProbe.UNKNOWN -> R.string.tvtools_network_probe_unknown
+                },
+            )
             ListGroup(Modifier.padding(top = 8.dp, bottom = 12.dp)) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Body(msg(R.string.tvtools_network_dns_servers, "servers" to dnsServers))
+                    Body(msg(R.string.tvtools_network_probe, "result" to connectivityProbe))
                     Body(msg(R.string.tvtools_network_private_dns, "mode" to privateDnsMode))
                     network.privateDnsProviderHostname?.let {
                         Body(msg(R.string.tvtools_network_private_dns_provider, "hostname" to it))

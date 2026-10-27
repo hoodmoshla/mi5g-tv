@@ -594,9 +594,15 @@ class TvToolsMachine(
         val privateDnsMode = read(ShellRenderer.privateDnsModeLine())
         val privateDnsHostname = read(ShellRenderer.privateDnsSpecifierLine())
         val defaultRoute = read(ShellRenderer.defaultRouteLine())
-        val hasAnyResult = dns.any { it != null } || privateDnsMode != null || privateDnsHostname != null || defaultRoute != null
+        val probe = attempt { TvShellRunner.run(session, ShellRenderer.networkDnsProbeLine()) }.getOrNull()
+        val hasAnyResult = dns.any { it != null } || privateDnsMode != null || privateDnsHostname != null || defaultRoute != null || probe != null
         val diagnostics = if (hasAnyResult) {
-            TvNetworkDiagnosticsParser.parse(dns, privateDnsMode, privateDnsHostname, defaultRoute)
+            TvNetworkDiagnosticsParser.parse(
+                dns, privateDnsMode, privateDnsHostname, defaultRoute,
+                probeExitCode = probe?.exit,
+                probeOutput = probe?.let { it.stdout + "\n" + it.stderr },
+                probeTruncated = probe?.truncated ?: false,
+            )
         } else {
             null
         }

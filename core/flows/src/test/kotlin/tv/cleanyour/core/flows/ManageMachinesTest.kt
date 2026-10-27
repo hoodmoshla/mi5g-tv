@@ -970,6 +970,7 @@ class ManageMachinesTest {
         h.session.recording.on("settings get global private_dns_mode", "opportunistic\n")
         h.session.recording.on("settings get global private_dns_specifier", "null\n")
         h.session.recording.on("ip route show default", "default via 192.168.1.1 dev wlan0 proto dhcp\n")
+        h.session.recording.on("ping -c 1 -W 3 example.com", "PING example.com (93.184.216.34) 56 data bytes\n64 bytes from 93.184.216.34: icmp_seq=1 ttl=55 time=20 ms\n")
         val tools = TvToolsMachine(h.manageDeps(), backgroundScope, tv.id)
         settle()
 
@@ -983,7 +984,9 @@ class ManageMachinesTest {
         assertNull(diagnostics.privateDnsProviderHostname)
         assertEquals("192.168.1.1", diagnostics.defaultGateway)
         assertEquals("wlan0", diagnostics.networkInterface)
-        assertTrue(h.session.execLines.none { "ping" in it || "settings' 'put" in it })
+        assertEquals(TvConnectivityProbe.HOST_REPLIED, diagnostics.connectivityProbe)
+        assertTrue(h.session.execLines.any { "ping" in it })
+        assertTrue(h.session.execLines.none { "settings' 'put" in it })
     }
 
     @Test fun installHomeScreenFromNotOnTvInstallsAndActivatesTheLauncher() = runTest(timeout = 30.seconds) {
