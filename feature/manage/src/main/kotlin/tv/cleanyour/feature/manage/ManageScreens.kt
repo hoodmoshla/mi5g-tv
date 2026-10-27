@@ -440,10 +440,10 @@ fun AppSettingsScreen(
         ScreenTitle(stringResource(R.string.appsettings_title), titleTop)
         ListGroup(Modifier.padding(top = 20.dp)) {
             SwitchRow(stringResource(R.string.appsettings_large_text), state.prefs.largeTextFollowsSystem, { onIntent(AppSettingsIntent.SetLargeText(it)) },
-                subtitle = stringResource(R.string.appsettings_large_text_note))
+                subtitle = stringResource(R.string.appsettings_large_text_note), enabled = !state.working)
             ListDivider()
             SwitchRow(stringResource(R.string.appsettings_haptics), state.prefs.haptics, { onIntent(AppSettingsIntent.SetHaptics(it)) },
-                subtitle = stringResource(R.string.appsettings_haptics_note))
+                subtitle = stringResource(R.string.appsettings_haptics_note), enabled = !state.working)
         }
         SectionLabel(stringResource(R.string.appsettings_about))
         ListGroup {

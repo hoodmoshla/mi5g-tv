@@ -1,6 +1,7 @@
 package tv.cleanyour.core.flows
 
 import app.cash.turbine.test
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
@@ -417,6 +418,64 @@ class ManageMachinesTest {
         assertEquals(SettingsBackupStatus.UNDONE, machine.state.value.backupStatus)
         assertFalse(machine.state.value.canUndoSettingsImport)
         assertEquals(AppSettingsBackupOperation.ROLLBACK, machine.state.value.backupHistory.last().operation)
+    }
+
+    @Test fun preferenceChangeDuringImportCannotOverwriteImportedSettings() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val imported = AppSettingsPreferences(haptics = false, largeTextFollowsSystem = true)
+        val importedPrefs = AppPrefsValue(haptics = imported.haptics, largeTextFollowsSystem = imported.largeTextFollowsSystem)
+        val importWriteStarted = CompletableDeferred<Unit>()
+        val releaseImportWrite = CompletableDeferred<Unit>()
+        val staleWriteStarted = CompletableDeferred<Unit>()
+        val releaseStaleWrite = CompletableDeferred<Unit>()
+        val importedBytes = "haptics=false\nlargeText=true\n"
+        val staleBytes = "haptics=false\nlargeText=false\n"
+        val racingDocuments = object : DocumentStore {
+            override suspend fun <T> read(path: String, decode: (ByteArray) -> T): T? = h.documents.read(path, decode)
+
+            override suspend fun write(path: String, bytes: ByteArray) {
+                when {
+                    path == "settings.txt" && bytes.decodeToString() == importedBytes -> {
+                        importWriteStarted.complete(Unit)
+                        releaseImportWrite.await()
+                    }
+                    path == "settings.txt" && bytes.decodeToString() == staleBytes -> {
+                        staleWriteStarted.complete(Unit)
+                        releaseStaleWrite.await()
+                    }
+                }
+                h.documents.write(path, bytes)
+            }
+
+            override suspend fun delete(path: String) { h.documents.delete(path) }
+            override suspend fun list(dir: String): List<String> = h.documents.list(dir)
+        }
+        val deps = h.manageDeps(documents = racingDocuments)
+        val before = AppPrefsValue(haptics = true, largeTextFollowsSystem = false)
+        deps.appPrefs.save(before)
+        val machine = AppSettingsMachine(deps, backgroundScope)
+        settle()
+
+        val bytes = AppSettingsBackupCodec.encode("1.4.0", h.clock.nowMs(), imported)
+        machine.dispatch(AppSettingsIntent.ImportSettingsStarted)
+        machine.dispatch(AppSettingsIntent.ImportSettingsFile(bytes)); settle()
+        machine.dispatch(AppSettingsIntent.ConfirmSettingsImport); settle()
+        assertTrue(importWriteStarted.isCompleted, "the imported preference write is paused")
+
+        machine.dispatch(AppSettingsIntent.SetHaptics(false)); settle()
+        val staleWriteWasStarted = staleWriteStarted.isCompleted
+        try {
+            releaseImportWrite.complete(Unit)
+            settle()
+            assertEquals(SettingsBackupStatus.IMPORTED, machine.state.value.backupStatus)
+            assertEquals(importedPrefs, machine.state.value.prefs)
+            if (staleWriteWasStarted) releaseStaleWrite.complete(Unit)
+            settle()
+            assertEquals(importedPrefs, deps.appPrefs.load(), "a stale toggle write must not overwrite the completed import")
+        } finally {
+            releaseImportWrite.complete(Unit)
+            releaseStaleWrite.complete(Unit)
+        }
     }
 
     @Test fun failedSettingsImportReloadsPersistedValuesAndKeepsRollbackAvailable() = runTest(timeout = 30.seconds) {
