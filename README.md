@@ -55,7 +55,7 @@
 ## ✨ أبرز المميزات
 
 ### 1. 🧹 تنظيف التلفاز وإيقاف الإعلانات بأمان
-- إيقاف تطبيقات الإعلانات والتتبع والعروض الترويجية المدمجة في النظام بدون حذف أي بيانات، مع دعم أكثر من **138 ملف تعريف رسمي** لمختلف ماركات الشاشات (Sony, TCL, Xiaomi Mi TV, Hisense, Philips, Thomson/Kodak, Chromecast وغيرها).
+- إيقاف تطبيقات الإعلانات والتتبع والعروض الترويجية المدمجة في النظام بدون حذف أي بيانات، مع **138 مدخل ملف تعريف للمطابقة** لمختلف ماركات الشاشات. المطابقة لا تعني اختبار كل ميزة على كل جهاز؛ راجع [دليل توافق الأجهزة والأدلة](docs/DEVICE-COMPATIBILITY.md).
 - **نقطة استعادة تلقائية:** يحفظ التطبيق نسخة احتياطية كاملة قبل أي تعديل، لتتمكن من استرجاع حالة المصنع بضغطة زر واحدة متى شئت.
 
 ### 2. 🏠 شاشة رئيسية نظيفة ودعم منصات البث العربية
@@ -113,7 +113,7 @@
 
 **Mi5G TV** (`com.midroid.mi5gtv`) is an Arabic-first Android TV & Google TV cleaner, remote toolkit, and app manager over Wi-Fi (ADB).
 
-- **Debloat & Clean Home Screen:** Safely disables vendor bloatware and ad rows across 138+ verified TV profiles with a one-tap restore point.
+- **Debloat & Clean Home Screen:** Safely disables vendor bloatware and ad rows using 138 curated TV profile entries for matching, with a one-tap restore point. Profile matching is not per-feature test certification; see the [device compatibility evidence guide](docs/DEVICE-COMPATIBILITY.md).
 - **Speed Boost & Quick Cast:** Live RAM/storage monitor, cache trim + background force-stop, animation speed toggle (`0.5x` / `0x` / `1x`), URL/photo/video casting, and remote APK installer.
 - **Full TV App Manager:** Launch, Force Stop, Clear Cache/Data, Uninstall, and pull APK backups from TV to phone.
 - **5 Bundled TV Modules:** Built-in AdGuard DNS switcher, Prayer Times & Weather, TV Speedtest, TV File Manager, and Today's Matches (`tv-matches`) with full Android TV Leanback banner support.
