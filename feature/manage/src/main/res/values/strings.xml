@@ -298,18 +298,21 @@
     <string name="tvtools_apk_installed">{name} was installed on the TV.</string>
     <string name="tvtools_apk_failed">Could not install {name} on the TV.</string>
     <!-- v1.3.0: Speed boost, Quick Cast, and TV App Manager -->
-    <string name="tvtools_perf_section">Speed boost and memory cleaner</string>
+    <string name="tvtools_perf_section">Performance status</string>
     <string name="tvtools_ram_status">RAM: {used} of {total} GB used</string>
     <string name="tvtools_storage_status">Storage: {free} of {total} GB free</string>
     <string name="tvtools_perf_refresh">Refresh memory status</string>
+    <string name="tvtools_perf_refreshing">Reading the TV\'s latest memory and storage...</string>
+    <string name="tvtools_perf_refresh_failed">Could not get a new reading. Any numbers shown are from the last successful check and may be old.</string>
     <string name="tvtools_speed_boost_btn">Speed boost TV and clean cache</string>
     <string name="tvtools_speed_boosting">Trimming cache and closing background apps...</string>
     <string name="tvtools_speed_boosted">Cache cleaned and {count} background apps closed.</string>
     <string name="tvtools_speed_failed">Could not complete speed boost. Check the TV connection.</string>
-    <string name="tvtools_anim_label">Menu animation speed</string>
-    <string name="tvtools_anim_fast">Fast (0.5x)</string>
+    <string name="tvtools_anim_label">Animation profile</string>
+    <string name="tvtools_anim_fast">Low-resource option (0.5x)</string>
     <string name="tvtools_anim_off">Instant (Off)</string>
     <string name="tvtools_anim_default">Default (1x)</string>
+    <string name="tvtools_low_resource_note">This only changes Android animation scales to 0.5x. It does not free RAM, close apps, clear data, or guarantee faster apps. Restore 1x with the option above.</string>
     <string name="tvtools_anim_applying">Applying animation speed...</string>
     <string name="tvtools_anim_applied">Menu animation speed updated on the TV.</string>
     <string name="tvtools_anim_failed">Could not update animation speed.</string>

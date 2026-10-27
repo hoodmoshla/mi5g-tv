@@ -291,18 +291,21 @@
     <string name="tvtools_apk_installed">تم تثبيت {name} بنجاح على التلفاز.</string>
     <string name="tvtools_apk_failed">تعذّر تثبيت {name} على التلفاز.</string>
     <!-- v1.3.0: Speed boost, Quick Cast, and TV App Manager -->
-    <string name="tvtools_perf_section">تسريع التلفاز وتنظيف الرام والكاش</string>
+    <string name="tvtools_perf_section">حالة الأداء</string>
     <string name="tvtools_ram_status">الذاكرة العشوائية (RAM): مستخدم {used} من {total} جيجابايت</string>
     <string name="tvtools_storage_status">مساحة التخزين: متاح {free} من {total} جيجابايت</string>
     <string name="tvtools_perf_refresh">تحديث حالة الذاكرة</string>
+    <string name="tvtools_perf_refreshing">جارٍ قراءة أحدث حالة للذاكرة والتخزين في التلفاز...</string>
+    <string name="tvtools_perf_refresh_failed">تعذّر جلب قراءة جديدة. الأرقام الظاهرة من آخر قراءة ناجحة وقد تكون قديمة.</string>
     <string name="tvtools_speed_boost_btn">تسريع التلفاز وتنظيف الذاكرة</string>
     <string name="tvtools_speed_boosting">جارٍ تنظيف الكاش وإغلاق تطبيقات الخلفية...</string>
     <string name="tvtools_speed_boosted">تم تنظيف الكاش وإغلاق {count} تطبيقات في الخلفية بنجاح.</string>
     <string name="tvtools_speed_failed">تعذّر تسريع التلفاز. تحقق من اتصال التلفاز.</string>
-    <string name="tvtools_anim_label">تسريع حركة القوائم</string>
-    <string name="tvtools_anim_fast">سريع (0.5x)</string>
+    <string name="tvtools_anim_label">إعداد حركة القوائم</string>
+    <string name="tvtools_anim_fast">وضع خفيف (0.5x)</string>
     <string name="tvtools_anim_off">فوري (إيقاف الحركة)</string>
     <string name="tvtools_anim_default">افتراضي (1x)</string>
+    <string name="tvtools_low_resource_note">يغيّر هذا الخيار سرعات حركات Android إلى 0.5x فقط. لا يحرر RAM، ولا يغلق التطبيقات أو يحذف البيانات، ولا يضمن تسريعها. يمكنك استعادة 1x من الخيار أعلاه.</string>
     <string name="tvtools_anim_applying">جارٍ تطبيق سرعة الحركة...</string>
     <string name="tvtools_anim_applied">تم تحديث سرعة حركة القوائم على التلفاز.</string>
     <string name="tvtools_anim_failed">تعذّر تحديث سرعة حركة القوائم.</string>

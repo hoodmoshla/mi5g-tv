@@ -1371,6 +1371,33 @@ class ManageMachinesTest {
         assertNotNull(h.tvs.tvs.value.single { it.id == tv.id }.launcher)
     }
 
+    @Test fun manualPerformanceRefreshKeepsTheLastReadingVisibleWhenTheNewReadFails() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val tv = h.knownTv()
+        h.session.recording.on(
+            "cat /proc/meminfo",
+            "MemTotal:        2097152 kB\nMemFree:          300000 kB\nMemAvailable:     838860 kB\n",
+        )
+        h.session.recording.on(
+            "df -k /data",
+            "Filesystem     1K-blocks    Used Available Use% Mounted on\n/dev/block/dm-0  8388608 4194304   4194304  50% /data\n",
+        )
+        h.session.recording.on("settings get global window_animation_scale", "1.0\n")
+
+        val tools = TvToolsMachine(h.manageDeps(), backgroundScope, tv.id)
+        settle()
+        val previous = assertNotNull(tools.state.value.performanceStats)
+        assertEquals(TvPerformanceLoadStatus.IDLE, tools.state.value.performanceLoadStatus)
+
+        h.session.recording.on("cat /proc/meminfo", "", exit = 1, stderr = "transport failed")
+        tools.dispatch(TvToolsIntent.RefreshPerformance)
+        settle()
+
+        assertEquals(TvPerformanceLoadStatus.FAILED, tools.state.value.performanceLoadStatus)
+        assertEquals(previous, tools.state.value.performanceStats)
+        assertTrue(h.session.execLines.count { "/proc/meminfo" in it } >= 2)
+    }
+
     @Test fun speedBoostQuickCastAndTvAppManagerWorkEndToEnd() = runTest(timeout = 30.seconds) {
         val h = Harness()
         val tv = h.knownTv()
