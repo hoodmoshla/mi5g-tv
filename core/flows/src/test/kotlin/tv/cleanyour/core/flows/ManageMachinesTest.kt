@@ -1511,6 +1511,18 @@ class ManageMachinesTest {
         assertTrue(h.session.execLines.count { "/proc/meminfo" in it } >= 2)
     }
 
+    @Test fun tvPerformanceStatsRequireExplicitDataMountpoint() {
+        val memInfo = "MemTotal: 2097152 kB\nMemAvailable: 838860 kB\n"
+        val header = "Filesystem 1K-blocks Used Available Use% Mounted on\n"
+        val otherMount = "/dev/block/dm-1 16777216 10000000 6777216 60% /system\n"
+        assertNull(TvPerformanceStats.parse(memInfo, header + otherMount))
+
+        val dataMount = "/dev/block/dm-0 8388608 4194304 4194304 50% /data\n"
+        val stats = assertNotNull(TvPerformanceStats.parse(memInfo, header + dataMount + otherMount))
+        assertEquals("8.0", stats.storageTotalGb)
+        assertEquals("4.0", stats.storageFreeGb)
+    }
+
     @Test fun speedBoostQuickCastAndTvAppManagerWorkEndToEnd() = runTest(timeout = 30.seconds) {
         val h = Harness()
         val tv = h.knownTv()

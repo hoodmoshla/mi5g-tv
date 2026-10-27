@@ -72,7 +72,7 @@ data class TvPerformanceStats(
                 .map { it.trim().split(Regex("\\s+")) }
                 .filter { it.size >= 6 && it[1].toLongOrNull() != null && it[3].toLongOrNull() != null }
                 .toList()
-            val dataRow = dfRows.lastOrNull { it.last() == "/data" } ?: dfRows.lastOrNull() ?: return null
+            val dataRow = dfRows.lastOrNull { it.last() == "/data" } ?: return null
             val totalDataKb = dataRow[1].toLongOrNull()?.takeIf { it > 0L } ?: return null
             val availDataKb = dataRow[3].toLongOrNull()?.coerceIn(0L, totalDataKb) ?: return null
             val usedDataKb = (totalDataKb - availDataKb).coerceIn(0L, totalDataKb)
