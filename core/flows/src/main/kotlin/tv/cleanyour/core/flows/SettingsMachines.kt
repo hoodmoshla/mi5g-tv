@@ -192,9 +192,12 @@ class AppSettingsMachine(
         return true
     }
 
-    // "Reset my key" (F2): every TV asks to trust this phone again.
+    // "Reset my key" (F2): every TV asks to trust this phone again. Do not close any sessions
+    // while a run is at work on any TV; check both before and after the credential prompt.
     private suspend fun resetKey() {
+        if (refusedWhileWorking()) return
         d.gate.passWithSubtitle(APP_GATE_ID, d.copy.text(CopyKey.GATE_SUBTITLE_RESET_KEY), forcePrompt = true) ?: return send(Working(false))
+        if (refusedWhileWorking()) return
         send(Working(true))
         attempt { d.sessionEnd.endAll() }   // D7: every session closes here
         attempt { d.sessions.closeAll() }

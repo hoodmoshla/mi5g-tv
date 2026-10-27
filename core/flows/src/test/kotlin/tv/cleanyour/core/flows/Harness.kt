@@ -153,7 +153,8 @@ class Harness(val clock: FakeClock = FakeClock(Samples.NOW_MS)) {
     fun manageDeps(fetcherSources: tv.cleanyour.core.registry.ArtifactFetcher = fetcher, encoder: ConfigEncoder = ConfigEncoder { "{}".encodeToByteArray() },
                    launcherPin: tv.cleanyour.core.trust.LauncherPin = FakeLauncherPin(Samples.launcherArtifact()),
                    themes: tv.cleanyour.core.spec.ThemeSource = this.themes, store: StoreRules = StoreRules.FULL,
-                   updates: UpdateChecker = UpdateChecker { "0.2.0" }, profiles: tv.cleanyour.core.spec.ProfileSource = this.profiles) = ManageDeps(
+                   updates: UpdateChecker = UpdateChecker { "0.2.0" }, profiles: tv.cleanyour.core.spec.ProfileSource = this.profiles,
+                   gate: GateKeeper = this.gate) = ManageDeps(
         tvs = tvs, sessions = sessions, discovery = discovery, access = access, gate = gate, runner = runner, engine = engine,
         ledger = ledger, prober = prober, profiles = profiles, facts = facts, snapshots = snapshots, documents = documents,
         blobs = blobs, themes = themes, launcherPin = launcherPin, configTransport = configTransport,
