@@ -44,6 +44,12 @@ import tv.cleanyour.testing.fixtures.FakeThemeSource
 import tv.cleanyour.core.spec.Theme
 import tv.cleanyour.core.registry.IndexState
 import tv.cleanyour.core.trust.VerifiedIndex
+import tv.cleanyour.core.backup.AppSettingsBackupCodec
+import tv.cleanyour.core.backup.AppSettingsBackupHistoryEntry
+import tv.cleanyour.core.backup.AppSettingsBackupOperation
+import tv.cleanyour.core.backup.AppSettingsPreferences
+import tv.cleanyour.core.backup.AppSettingsBackupResult
+import tv.cleanyour.core.backup.AppSettingsBackupStore
 import tv.cleanyour.testing.fixtures.FakeApkInspector
 import tv.cleanyour.testing.fixtures.FakeArtifactFetcher
 import tv.cleanyour.testing.fixtures.FakeCredentialGate
@@ -368,12 +374,92 @@ class ManageMachinesTest {
     @Test fun deleteEverythingClearsTheDiagnosticsLog() = runTest(timeout = 30.seconds) {
         val h = Harness()
         h.knownTv()
+        val backupStore = AppSettingsBackupStore(h.documents)
+        backupStore.record(AppSettingsBackupHistoryEntry(Samples.NOW_MS, AppSettingsBackupOperation.IMPORT, AppSettingsBackupResult.SUCCESS))
+        backupStore.saveRollback(tv.cleanyour.core.backup.AppSettingsBackupDocument("1.5.0", Samples.NOW_MS, AppSettingsPreferences(true, true)))
         val m = AppSettingsMachine(h.manageDeps(), backgroundScope)
         settle()
         m.dispatch(AppSettingsIntent.Ask(AppConfirm.DELETE_EVERYTHING))
         m.dispatch(AppSettingsIntent.DeleteEverything); settle()
         assertTrue(h.tvs.tvs.value.isEmpty())
         assertEquals(1, h.diagnosticsClears)
+        assertTrue(backupStore.history().isEmpty())
+        assertNull(backupStore.loadRollback())
+    }
+
+    @Test fun appSettingsImportWaitsForConfirmationAndUndoRestoresThePreviousValues() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val deps = h.manageDeps()
+        val before = AppPrefsValue(haptics = true, largeTextFollowsSystem = false)
+        val imported = AppSettingsPreferences(haptics = false, largeTextFollowsSystem = true)
+        deps.appPrefs.save(before)
+        val machine = AppSettingsMachine(deps, backgroundScope)
+        settle()
+
+        val bytes = AppSettingsBackupCodec.encode("1.4.0", h.clock.nowMs(), imported)
+        machine.dispatch(AppSettingsIntent.ImportSettingsStarted)
+        assertTrue(machine.state.value.working)
+        machine.dispatch(AppSettingsIntent.ImportSettingsFile(bytes)); settle()
+        assertEquals(SettingsBackupStatus.PREVIEW_READY, machine.state.value.backupStatus)
+        assertFalse(machine.state.value.working)
+        assertEquals(before, deps.appPrefs.load())
+
+        machine.dispatch(AppSettingsIntent.ConfirmSettingsImport); settle()
+        assertEquals(AppPrefsValue(imported.haptics, imported.largeTextFollowsSystem), deps.appPrefs.load())
+        assertEquals(SettingsBackupStatus.IMPORTED, machine.state.value.backupStatus)
+        assertTrue(machine.state.value.canUndoSettingsImport)
+        assertEquals(AppSettingsBackupResult.SUCCESS, machine.state.value.backupHistory.last().result)
+
+        machine.dispatch(AppSettingsIntent.UndoSettingsImport); settle()
+        assertEquals(before, deps.appPrefs.load())
+        assertEquals(SettingsBackupStatus.UNDONE, machine.state.value.backupStatus)
+        assertFalse(machine.state.value.canUndoSettingsImport)
+        assertEquals(AppSettingsBackupOperation.ROLLBACK, machine.state.value.backupHistory.last().operation)
+    }
+
+    @Test fun appSettingsImportRejectsCorruptFilesWithoutChangingPreferences() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val deps = h.manageDeps()
+        val before = AppPrefsValue(haptics = true, largeTextFollowsSystem = false)
+        deps.appPrefs.save(before)
+        val machine = AppSettingsMachine(deps, backgroundScope)
+        settle()
+
+        machine.dispatch(AppSettingsIntent.ImportSettingsStarted)
+        machine.dispatch(AppSettingsIntent.ImportSettingsFile("{bad json".encodeToByteArray())); settle()
+        assertEquals(SettingsBackupStatus.INVALID, machine.state.value.backupStatus)
+        assertEquals(before, deps.appPrefs.load())
+        assertEquals(AppSettingsBackupResult.REJECTED, machine.state.value.backupHistory.last().result)
+        assertFalse(machine.state.value.canUndoSettingsImport)
+    }
+
+    @Test fun backupPickerOperationsAreSerializedAndPickerCancellationIsRecorded() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val deps = h.manageDeps()
+        val preferences = AppPrefsValue(haptics = true, largeTextFollowsSystem = false)
+        deps.appPrefs.save(preferences)
+        val machine = AppSettingsMachine(deps, backgroundScope)
+        settle()
+
+        machine.dispatch(AppSettingsIntent.ExportSettingsStarted)
+        assertTrue(machine.state.value.working)
+        machine.dispatch(AppSettingsIntent.ImportSettingsStarted)
+        assertEquals(SettingsBackupStatus.EXPORTING, machine.state.value.backupStatus)
+        val exported = AppSettingsBackupCodec.decode(machine.exportSettingsBackup())
+        assertEquals(AppSettingsPreferences(preferences.haptics, preferences.largeTextFollowsSystem), exported.preferences)
+        machine.dispatch(AppSettingsIntent.ExportSettingsFinished(AppSettingsBackupResult.SUCCESS)); settle()
+        assertEquals(SettingsBackupStatus.EXPORTED, machine.state.value.backupStatus)
+        assertFalse(machine.state.value.working)
+        assertEquals(AppSettingsBackupOperation.EXPORT, machine.state.value.backupHistory.last().operation)
+
+        machine.dispatch(AppSettingsIntent.ImportSettingsStarted)
+        assertTrue(machine.state.value.working)
+        machine.dispatch(AppSettingsIntent.ImportSettingsCancelled)
+        machine.dispatch(AppSettingsIntent.ImportSettingsCancelled); settle()
+        assertEquals(SettingsBackupStatus.IDLE, machine.state.value.backupStatus)
+        assertFalse(machine.state.value.working)
+        assertEquals(2, machine.state.value.backupHistory.size)
+        assertEquals(AppSettingsBackupResult.CANCELLED, machine.state.value.backupHistory.last().result)
     }
 
     @Test fun resetMyKeyAlwaysPromptsAndClearsPasses() = runTest(timeout = 30.seconds) {

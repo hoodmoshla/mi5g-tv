@@ -45,6 +45,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import tv.cleanyour.core.flows.AppConfirm
+import tv.cleanyour.core.flows.AppSettingsIntent
 import tv.cleanyour.core.flows.DoorPhase
 import tv.cleanyour.core.flows.ManageEffect
 import tv.cleanyour.core.flows.ReportKind
@@ -56,6 +57,8 @@ import tv.cleanyour.core.flows.SnackKind
 import tv.cleanyour.core.flows.StartDestination
 import tv.cleanyour.core.flows.TvToolsIntent
 import tv.cleanyour.core.flows.TvWriter
+import tv.cleanyour.core.backup.AppSettingsBackupCodec
+import tv.cleanyour.core.backup.AppSettingsBackupResult
 import tv.cleanyour.core.model.PlanId
 import tv.cleanyour.core.model.TvId
 import tv.cleanyour.feature.backup.RestoreScreen
@@ -350,6 +353,27 @@ fun AppRoot(graph: AppGraph, start: Dest, onExit: () -> Unit) {
                 entry<Dest.AppSettings> {
                     val m = rememberMachine("appsettings") { graph.appSettings(it) }
                     val state by m.state.collectAsStateWithLifecycle()
+                    val createSettingsBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+                        if (uri == null) m.dispatch(AppSettingsIntent.ExportSettingsFinished(AppSettingsBackupResult.CANCELLED))
+                        else scope.launch {
+                            val saved = runCatching {
+                                val bytes = withContext(Dispatchers.IO) { m.exportSettingsBackup() }
+                                withContext(Dispatchers.IO) {
+                                    context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                                        ?: error("could not open selected document")
+                                }
+                            }.isSuccess
+                            m.dispatch(AppSettingsIntent.ExportSettingsFinished(if (saved) AppSettingsBackupResult.SUCCESS else AppSettingsBackupResult.FAILED))
+                        }
+                    }
+                    val openSettingsBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                        if (uri == null) m.dispatch(AppSettingsIntent.ImportSettingsCancelled)
+                        else scope.launch {
+                            val bytes = withContext(Dispatchers.IO) { readSettingsBackup(context, uri) }
+                            if (bytes == null) m.dispatch(AppSettingsIntent.ImportSettingsReadFailed)
+                            else m.dispatch(AppSettingsIntent.ImportSettingsFile(bytes))
+                        }
+                    }
                     LaunchedEffect(m) { m.effects.collect { onManageEffect(it) } }
                     SecureWindow(state.confirm == AppConfirm.RESET_KEY)
                     AppSettingsScreen(
@@ -357,6 +381,18 @@ fun AppRoot(graph: AppGraph, start: Dest, onExit: () -> Unit) {
                         onOpenRelease = { graph.store.releasePage?.let { url -> scope.launch { onManageEffect(ManageEffect.OpenUrl(url)) } } },
                         onSupportPayPal = { scope.launch { onManageEffect(ManageEffect.OpenUrl("https://paypal.me/Midroid5G")) } },
                         onOpenDeveloper = { scope.launch { onManageEffect(ManageEffect.OpenUrl("https://x.com/midroid5G")) } },
+                        onExportSettings = {
+                            if (m.state.value.working) return@AppSettingsScreen
+                            m.dispatch(AppSettingsIntent.ExportSettingsStarted)
+                            runCatching { createSettingsBackup.launch("mi5g-tv-settings.json") }
+                                .onFailure { m.dispatch(AppSettingsIntent.ExportSettingsFinished(AppSettingsBackupResult.FAILED)) }
+                        },
+                        onImportSettings = {
+                            if (m.state.value.working) return@AppSettingsScreen
+                            m.dispatch(AppSettingsIntent.ImportSettingsStarted)
+                            runCatching { openSettingsBackup.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }
+                                .onFailure { m.dispatch(AppSettingsIntent.ImportSettingsReadFailed) }
+                        },
                     )
                 }
             },
@@ -398,6 +434,24 @@ object SnackText {
         SnackKind.RUN_BUSY_ANY -> tv.cleanyour.feature.manage.R.string.appsettings_delete_all_busy to mapOf("tv" to e.name)
     }
 }
+
+private fun readSettingsBackup(context: android.content.Context, uri: Uri): ByteArray? = runCatching {
+    val input = context.contentResolver.openInputStream(uri) ?: return@runCatching null
+    input.use { source ->
+        val output = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(4 * 1024)
+        while (true) {
+            val count = source.read(buffer)
+            if (count <= 0) break
+            val limit = AppSettingsBackupCodec.MAX_FILE_BYTES + 1
+            val remaining = limit - output.size()
+            if (remaining <= 0) return@use ByteArray(limit)
+            output.write(buffer, 0, minOf(count, remaining))
+            if (output.size() > AppSettingsBackupCodec.MAX_FILE_BYTES) return@use ByteArray(limit)
+        }
+        output.toByteArray()
+    }
+}.getOrNull()
 
 private suspend fun readPickedApk(context: android.content.Context, graph: AppGraph, uri: Uri): TvToolsIntent.ApkPicked? = runCatching {
     val cr = context.contentResolver

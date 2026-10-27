@@ -153,10 +153,42 @@
     <string name="appsettings_reset_key_title">هل تريد إعادة ضبط المفتاح على هذا الهاتف؟</string>
     <string name="appsettings_reset_key_confirm">إعادة ضبط مفتاحي</string>
     <string name="appsettings_delete_all">حذف كل شيء</string>
-    <string name="appsettings_delete_all_note">يحذف جميع سجلات التلفاز وسجلات العمليات ونقاط الاستعادة وسجل التشخيص والمفتاح من هذا الهاتف. لا تتغير أجهزة التلفاز نفسها، ولن تتمكن من التراجع من هذا الهاتف بعد ذلك.</string>
+    <string name="appsettings_delete_all_note">يحذف سجلات التلفاز وسجلات العمليات ونقاط الاستعادة وتفضيلات التطبيق وسجل النسخ ونقطة التراجع المحلية وسجل التشخيص ومفتاح الهاتف. لا تتغير أجهزة التلفاز. لا تُحذف ملفات التصدير المحفوظة في مكان آخر، لكن لن يمكن التراجع من هذا الهاتف بعد ذلك.</string>
     <string name="appsettings_delete_all_title">هل تريد حذف كل شيء من هذا الهاتف؟</string>
     <string name="appsettings_delete_all_confirm">حذف كل شيء</string>
     <string name="appsettings_delete_all_busy">ما زال الإعداد يعمل على {tv}. انتظر حتى ينتهي أو أوقفه أولًا.</string>
+
+    <string name="appsettings_backup_title">نسخ إعدادات التطبيق</string>
+    <string name="appsettings_backup_scope">يشمل تفضيلي الاهتزاز وحجم النص فقط. لا يشمل سجلات التلفاز أو مفاتيح ADB أو بيانات التطبيقات.</string>
+    <string name="appsettings_backup_export">تصدير الإعدادات</string>
+    <string name="appsettings_backup_export_note">حفظ ملف JSON صغير وواضح عبر منتقي الملفات في Android.</string>
+    <string name="appsettings_backup_import">استيراد الإعدادات</string>
+    <string name="appsettings_backup_import_note">التحقق من التطبيق والصيغة وبصمة SHA-256 ثم عرض معاينة.</string>
+    <string name="appsettings_backup_undo">استعادة الإعدادات السابقة</string>
+    <string name="appsettings_backup_undo_note">إلغاء آخر استيراد واستعادة القيمتين المحفوظتين قبله.</string>
+    <string name="appsettings_backup_exporting">جارٍ تجهيز ملف الإعدادات…</string>
+    <string name="appsettings_backup_exported">تم حفظ ملف الإعدادات.</string>
+    <string name="appsettings_backup_importing">جارٍ فحص ملف الإعدادات…</string>
+    <string name="appsettings_backup_applying">جارٍ حفظ الإعدادات السابقة ثم تطبيق الاستيراد…</string>
+    <string name="appsettings_backup_imported">تم استيراد الإعدادات. يمكنك استعادة القيم السابقة أدناه.</string>
+    <string name="appsettings_backup_undone">تمت استعادة الإعدادات السابقة.</string>
+    <string name="appsettings_backup_invalid">الملف تالف أو غير متوافق. لم يتغير شيء.</string>
+    <string name="appsettings_backup_failed">تعذّر إكمال العملية. تحقّق من صلاحية الوصول للملف ثم أعد المحاولة.</string>
+    <string name="appsettings_backup_undoing">جارٍ استعادة الإعدادات السابقة…</string>
+    <string name="appsettings_backup_history">آخر عمليات النسخ</string>
+    <string name="appsettings_backup_history_line">{operation}: {result}</string>
+    <string name="appsettings_backup_op_export">تصدير</string>
+    <string name="appsettings_backup_op_import">استيراد</string>
+    <string name="appsettings_backup_op_rollback">استعادة</string>
+    <string name="appsettings_backup_result_success">نجحت</string>
+    <string name="appsettings_backup_result_cancelled">أُلغيت</string>
+    <string name="appsettings_backup_result_rejected">رُفضت</string>
+    <string name="appsettings_backup_result_failed">فشلت</string>
+    <string name="appsettings_backup_preview_title">مراجعة الإعدادات المستوردة</string>
+    <string name="appsettings_backup_preview_note">سيتغير هذان التفضيلان فقط. سنحفظ القيم الحالية أولًا كي تتمكن من التراجع. لن تتغير إعدادات التلفاز أو مفاتيحه.</string>
+    <string name="appsettings_backup_confirm">تطبيق الإعدادات المستوردة</string>
+    <string name="appsettings_backup_on">مفعّل</string>
+    <string name="appsettings_backup_off">متوقف</string>
 
     <!-- Stop and undo ask first (Confirmations) -->
     <string name="confirm_stop_title">هل تريد التوقف الآن؟</string>
@@ -333,4 +365,3 @@
     <string name="tvtools_power_done">تم التنفيذ بنجاح: {name}.</string>
     <string name="tvtools_power_failed">تعذّر التنفيذ على التلفاز: {name}.</string>
 </resources>
-
