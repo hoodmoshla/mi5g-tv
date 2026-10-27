@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -274,6 +275,7 @@ class ArabicReleaseScreenshotsTest {
                     TvAppActionsContent(
                         app = selectedShahid,
                         confirmingUninstall = false,
+                        confirmingClearData = false,
                         actionStatus = TvAppActionStatus.Done(selectedShahid.pkg, selectedShahid.name, TvAppActionKind.PULL_APK),
                         onIntent = {},
                     )
@@ -282,6 +284,24 @@ class ArabicReleaseScreenshotsTest {
         }
         compose.waitForIdle()
         compose.onNodeWithTag("shot").captureRoboImage(File(outDir130, "03_app_manager_and_apk_pull_ar.png"))
+
+        currentScreen = {
+            SheetOver(
+                screen = { TvAppManagerScreen(appMgrState, {}, {}) },
+                sheet = {
+                    TvAppActionsContent(
+                        app = selectedShahid,
+                        confirmingUninstall = false,
+                        confirmingClearData = true,
+                        actionStatus = TvAppActionStatus.Idle,
+                        onIntent = {},
+                    )
+                },
+            )
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("هل تريد مسح بيانات شاهد (Shahid)؟").fetchSemanticsNode()
+        compose.onNodeWithText("سيحذف هذا جميع بيانات تطبيق شاهد", substring = true).fetchSemanticsNode()
+        compose.onNodeWithText("مسح بيانات التطبيق").fetchSemanticsNode()
     }
 }
-

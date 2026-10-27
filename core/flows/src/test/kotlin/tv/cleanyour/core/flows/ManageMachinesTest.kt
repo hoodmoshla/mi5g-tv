@@ -40,6 +40,7 @@ import tv.cleanyour.core.model.Tv
 import tv.cleanyour.core.model.TvId
 import tv.cleanyour.core.model.TvAnimationScale
 import tv.cleanyour.core.model.TvKeyEvent
+import tv.cleanyour.core.ops.ShellRenderer
 import tv.cleanyour.testing.fixtures.FakeTvSession
 import tv.cleanyour.core.model.WizardDraft
 import tv.cleanyour.core.planner.PlanKind
@@ -1463,9 +1464,25 @@ class ManageMachinesTest {
         settle()
         assertEquals(TvAppActionStatus.Done(kodiApp.pkg, kodiApp.name, TvAppActionKind.FORCE_STOP), appMgr.state.value.actionStatus)
 
-        h.session.recording.on("pm clear --user 0 org.xbmc.kodi", "Success\n")
-        appMgr.dispatch(TvAppManagerIntent.ClearAppData(kodiApp.pkg))
+        val clearLine = ShellRenderer.clearPackageDataLine(kodiApp.pkg).text
+        h.session.recording.on(clearLine, "Success\n")
+        appMgr.dispatch(TvAppManagerIntent.AskClearAppData(kodiApp.pkg))
         settle()
+        assertEquals(kodiApp.pkg, appMgr.state.value.confirmingClearData)
+        assertFalse(clearLine in h.session.execLines)
+        appMgr.dispatch(TvAppManagerIntent.CancelClearAppData)
+        settle()
+        assertNull(appMgr.state.value.confirmingClearData)
+        assertFalse(clearLine in h.session.execLines)
+        appMgr.dispatch(TvAppManagerIntent.ConfirmClearAppData)
+        settle()
+        assertFalse(clearLine in h.session.execLines)
+
+        appMgr.dispatch(TvAppManagerIntent.AskClearAppData(kodiApp.pkg))
+        settle()
+        appMgr.dispatch(TvAppManagerIntent.ConfirmClearAppData)
+        settle()
+        assertTrue(clearLine in h.session.execLines)
         assertEquals(TvAppActionStatus.Done(kodiApp.pkg, kodiApp.name, TvAppActionKind.CLEAR_DATA), appMgr.state.value.actionStatus)
 
         val fakeExtractedApk = "PK-extracted-kodi-apk".encodeToByteArray()

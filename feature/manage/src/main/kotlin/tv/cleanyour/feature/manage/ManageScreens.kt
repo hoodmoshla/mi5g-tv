@@ -1526,6 +1526,7 @@ fun TvAppManagerScreen(
                 TvAppActionsContent(
                     app = selected,
                     confirmingUninstall = state.confirmingUninstall,
+                    confirmingClearData = state.confirmingClearData == selected.pkg,
                     actionStatus = state.actionStatus,
                     onIntent = onIntent,
                 )
@@ -1538,6 +1539,7 @@ fun TvAppManagerScreen(
 internal fun ColumnScope.TvAppActionsContent(
     app: TvInstalledApp,
     confirmingUninstall: Boolean,
+    confirmingClearData: Boolean,
     actionStatus: TvAppActionStatus,
     onIntent: (TvAppManagerIntent) -> Unit,
 ) {
@@ -1550,6 +1552,17 @@ internal fun ColumnScope.TvAppActionsContent(
             onConfirm = { onIntent(TvAppManagerIntent.UninstallApp(app.pkg)) },
             cancelLabel = stringResource(R.string.action_cancel),
             onCancel = { onIntent(TvAppManagerIntent.CancelUninstall) },
+        )
+        return
+    }
+    if (confirmingClearData && !working) {
+        ConfirmQuestion(
+            title = msg(R.string.tvapps_clear_data_confirm_title, "name" to app.name),
+            body = msg(R.string.tvapps_clear_data_confirm_body, "name" to app.name),
+            confirmLabel = stringResource(R.string.tvapps_clear_data_confirm_btn),
+            onConfirm = { onIntent(TvAppManagerIntent.ConfirmClearAppData) },
+            cancelLabel = stringResource(R.string.action_cancel),
+            onCancel = { onIntent(TvAppManagerIntent.CancelClearAppData) },
         )
         return
     }
@@ -1602,7 +1615,7 @@ internal fun ColumnScope.TvAppActionsContent(
         // Extra: Clear Cache & Data
         SecondaryButton(
             text = stringResource(R.string.tvapps_action_clear_data),
-            onClick = { onIntent(TvAppManagerIntent.ClearAppData(app.pkg)) },
+            onClick = { onIntent(TvAppManagerIntent.AskClearAppData(app.pkg)) },
             enabled = !working && app.canClearData,
             guardObscured = true,
         )
