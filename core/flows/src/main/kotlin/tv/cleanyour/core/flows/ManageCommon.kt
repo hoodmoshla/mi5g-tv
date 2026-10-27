@@ -13,6 +13,7 @@ import tv.cleanyour.core.planner.PlanKind
 import tv.cleanyour.core.planner.PlanRequest
 import tv.cleanyour.core.planner.PlanResult
 import tv.cleanyour.core.model.PackageName
+import tv.cleanyour.core.model.Prior
 import tv.cleanyour.core.model.Profile
 import tv.cleanyour.core.model.Tv
 import tv.cleanyour.core.model.TvId
@@ -45,6 +46,7 @@ sealed interface ManageEffect {
     data class Copy(val text: String) : ManageEffect                     // to the clipboard (0.3.2 B1, B2)
     data object HapticLight : ManageEffect
     data object HapticDouble : ManageEffect
+    data object PickRestoreBundle : ManageEffect                         // SAF ACTION_OPEN_DOCUMENT for a restore zip
     data object PickApk : ManageEffect
     data object PickCastMedia : ManageEffect
     data class SharePng(val png: ByteArray, val fileName: String) : ManageEffect
@@ -180,6 +182,7 @@ sealed interface WriteResult {
     data class Refused(val reasons: List<String>) : WriteResult
     data object NoTv : WriteResult           // cancelled at the debugging step, or the TV is unknown
     data object GateCancelled : WriteResult
+    data object StalePreview : WriteResult    // the prepared actions or prior state changed before confirmation
     data class Failed(val detail: String) : WriteResult
 }
 
@@ -188,7 +191,18 @@ sealed interface WriteResult {
 // `fresh` plans from a new snapshot instead of the newest stored one, for a request that needs what
 // an older snapshot may not hold (UpdateLauncher: the installed launcher's signer, launcher v2.4.0).
 class TvWriter(private val d: ManageDeps) {
-    suspend fun write(tvId: TvId, request: PlanRequest, fresh: Boolean = false, onBusy: (Busy) -> Unit = {}): WriteResult {
+    private fun samePrior(a: Prior?, b: Prior?): Boolean {
+        if (a == null || b == null) return a == b
+        val sameOverlay = when {
+            a.overlay == null -> b.overlay == null
+            b.overlay == null -> false
+            else -> a.overlay.contentEquals(b.overlay)
+        }
+        return a.packageState == b.packageState && a.settingValue == b.settingValue && a.home == b.home &&
+            a.present == b.present && sameOverlay
+    }
+
+    suspend fun write(tvId: TvId, request: PlanRequest, fresh: Boolean = false, expectedPlan: Plan? = null, onBusy: (Busy) -> Unit = {}): WriteResult {
         onBusy(Busy.Connecting)
         val session = when (val a = d.access.session(tvId)) {
             is AccessResult.Ok -> a.session
@@ -199,10 +213,17 @@ class TvWriter(private val d: ManageDeps) {
         // An earlier write left its run open: no new plan, no prompt, the card for that run (O2).
         (d.engine.runState(tvId).value as? RunState.Paused)?.let { p -> d.openWrites.show(tv, p); return WriteResult.Paused(p.plan, p) }
         return attempt {
-            val snapshot = if (fresh) d.runner.freshSnapshot(session) else d.runner.snapshotFor(tv, session)
+            val snapshot = if (fresh || expectedPlan != null) d.runner.freshSnapshot(session) else d.runner.snapshotFor(tv, session)
             val plan = when (val r = d.runner.plan(tv, request, snapshot)) {
                 is PlanResult.Ok -> r.plan
                 is PlanResult.Refused -> return@attempt WriteResult.Refused(r.reasons)
+            }
+            if (expectedPlan != null) {
+                val sameActions = plan.steps.size == expectedPlan.steps.size && plan.steps.zip(expectedPlan.steps)
+                    .all { (actual, reviewed) -> actual.op == reviewed.op && samePrior(actual.prior, reviewed.prior) }
+                if (plan.tvId != expectedPlan.tvId || plan.kind != expectedPlan.kind || !sameActions || plan.sections != expectedPlan.sections) {
+                    return@attempt WriteResult.StalePreview
+                }
             }
             val outcome = d.runner.run(tv, plan, session, onStarted = { d.sessionEnd.touched(tvId) }) { s ->
                 if (s is RunState.Running) onBusy(Busy.Working(s.percent, s.narration.map { it.text }))

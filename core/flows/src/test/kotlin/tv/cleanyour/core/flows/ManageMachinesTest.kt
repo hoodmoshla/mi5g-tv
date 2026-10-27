@@ -16,6 +16,7 @@ import tv.cleanyour.core.engine.StartRefusal
 import tv.cleanyour.core.engine.StartResult
 import tv.cleanyour.core.model.ArtifactRef
 import tv.cleanyour.core.model.ApkInfo
+import tv.cleanyour.core.model.BlobRef
 import tv.cleanyour.core.model.LauncherState
 import tv.cleanyour.core.model.Sha256
 import tv.cleanyour.core.model.SnapshotReason
@@ -27,8 +28,14 @@ import tv.cleanyour.core.model.Op
 import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.core.model.PermissionStatement
 import tv.cleanyour.core.model.PlanId
+import tv.cleanyour.core.model.Prior
+import tv.cleanyour.core.model.RemoteDir
+import tv.cleanyour.core.model.RemotePath
+import tv.cleanyour.core.model.SettingKey
+import tv.cleanyour.core.model.ChangeRecord
 import tv.cleanyour.core.model.Tier
 import tv.cleanyour.core.model.Tv
+import tv.cleanyour.core.model.TvId
 import tv.cleanyour.core.model.TvAnimationScale
 import tv.cleanyour.core.model.TvKeyEvent
 import tv.cleanyour.testing.fixtures.FakeTvSession
@@ -36,6 +43,8 @@ import tv.cleanyour.core.model.WizardDraft
 import tv.cleanyour.core.planner.PlanKind
 import tv.cleanyour.core.planner.PlanRequest
 import tv.cleanyour.core.planner.PlanResult
+import tv.cleanyour.core.planner.DefaultPlanner
+import tv.cleanyour.core.ops.ShellRenderer
 import tv.cleanyour.core.registry.FetchFailure
 import tv.cleanyour.core.spec.DecodeResult
 import tv.cleanyour.core.spec.LauncherConfigCodec
@@ -44,10 +53,18 @@ import tv.cleanyour.testing.fixtures.FakeThemeSource
 import tv.cleanyour.core.spec.Theme
 import tv.cleanyour.core.registry.IndexState
 import tv.cleanyour.core.trust.VerifiedIndex
+import tv.cleanyour.core.backup.AppSettingsBackupCodec
+import tv.cleanyour.core.backup.AppSettingsBackupHistoryEntry
+import tv.cleanyour.core.backup.AppSettingsBackupOperation
+import tv.cleanyour.core.backup.AppSettingsPreferences
+import tv.cleanyour.core.backup.AppSettingsBackupResult
+import tv.cleanyour.core.backup.AppSettingsBackupStore
+import tv.cleanyour.core.backup.ReadBundle
 import tv.cleanyour.testing.fixtures.FakeApkInspector
 import tv.cleanyour.testing.fixtures.FakeArtifactFetcher
 import tv.cleanyour.testing.fixtures.FakeCredentialGate
 import tv.cleanyour.testing.fixtures.FakeEngine
+import tv.cleanyour.testing.fixtures.FakeIdGen
 import tv.cleanyour.testing.fixtures.Samples
 import tv.cleanyour.testing.fixtures.sha256Of
 import kotlin.test.Test
@@ -289,6 +306,183 @@ class ManageMachinesTest {
         assertEquals(1, h.bundleWriter.written.size)
     }
 
+    @Test fun importedRestoreBundleUsesSameTvUndoOnlyAfterConfirmation() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val tv = h.knownTv()
+        h.ranDisable(tv, listOf(adPkg))
+        val changes = h.ledger.changes(tv.id)
+        val bundle = ReadBundle(tv.id, tv.facts.model, "0.1.0", Samples.NOW_MS, Samples.miTvSnapshot(), changes, emptyMap())
+        h.respond(PlanKind.UNDO_EVERYTHING, listOf(Op.Enable(adPkg)))
+        val m = RestorePointMachine(h.manageDeps(), backgroundScope, tv.id)
+        settle()
+
+        m.previewImportedBundle(bundle); settle()
+        val preview = assertIs<RestorePhase.BundlePreview>(m.state.value.phase)
+        assertEquals(changes, preview.preview.importedChanges)
+        assertEquals(listOf(Op.Enable(adPkg)), preview.preview.plan.steps.map { it.op })
+        m.dispatch(RestorePointIntent.PutEverythingBack); settle()
+        assertTrue(h.engine.calls.none { it is FakeEngine.Call.Start })
+
+        m.dispatch(RestorePointIntent.Confirm); settle()
+        assertTrue(assertIs<RestorePhase.BundlePreview>(m.state.value.phase).confirming)
+        m.dispatch(RestorePointIntent.PutEverythingBack); settle()
+        assertIs<RestorePhase.Finished>(m.state.value.phase)
+        assertEquals(changes, h.planner.requests.filterIsInstance<PlanRequest.UndoEverything>().last().changes)
+    }
+
+    @Test fun importedRestoreBundleForAnotherTvIsRejectedBeforePlanning() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val tv = h.knownTv()
+        val otherValue = (if (tv.id.value.first() == 'a') "b" else "a") + tv.id.value.drop(1)
+        val otherId = TvId(otherValue)
+        val foreign = ReadBundle(otherId, "Other TV", "0.1.0", Samples.NOW_MS, Samples.snapshot(tvId = otherId), emptyList(), emptyMap())
+        val m = RestorePointMachine(h.manageDeps(), backgroundScope, tv.id)
+        settle()
+
+        m.previewImportedBundle(foreign); settle()
+        assertEquals(RestoreBundleIssue.WRONG_TV, assertIs<RestorePhase.BundleError>(m.state.value.phase).issue)
+        assertTrue(h.planner.requests.filterIsInstance<PlanRequest.UndoEverything>().isEmpty())
+    }
+
+    @Test fun importedBundleLeavesUnverifiedAppInstalledAndShowsActualPlanActions() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val tv = h.knownTv()
+        h.ranDisable(tv, listOf(adPkg))
+        val rogue = PackageName("com.example.unverified")
+        val fakeInstall = ChangeRecord(
+            PlanId("01FAKERUN0000000000000002"), 0,
+            Op.Install(
+                RemotePath(RemoteDir.TMP, listOf("untrusted.apk")),
+                Samples.zeroHash, rogue, 1L, Samples.zeroHash, emptySet(),
+            ),
+            Prior(present = false), Samples.NOW_MS,
+        )
+        val unverifiedOverlayBytes = ChangeRecord(
+            PlanId("01FAKERUN0000000000000003"), 1,
+            Op.RemoveFile(RemotePath(RemoteDir.OVERLAY, listOf("unverified.jpg"))),
+            Prior(overlay = byteArrayOf(1, 2, 3)), Samples.NOW_MS,
+        )
+        val outsideOverlay = ChangeRecord(
+            PlanId("01FAKERUN0000000000000004"), 2,
+            Op.RemoveFile(RemotePath(RemoteDir.RESTORE, listOf("user-backup.zip"))),
+            Prior(), Samples.NOW_MS,
+        )
+        val changes = h.ledger.changes(tv.id)
+        val bundle = ReadBundle(tv.id, tv.facts.model, "0.1.0", Samples.NOW_MS, Samples.miTvSnapshot(),
+            changes + fakeInstall + unverifiedOverlayBytes + outsideOverlay, emptyMap())
+        h.respond(PlanKind.UNDO_EVERYTHING, listOf(Op.Enable(adPkg)))
+        val m = RestorePointMachine(h.manageDeps(), backgroundScope, tv.id)
+        settle()
+
+        m.previewImportedBundle(bundle); settle()
+        val preview = assertIs<RestorePhase.BundlePreview>(m.state.value.phase)
+        assertEquals(bundle.changes.size, preview.info.changes)
+        assertEquals(listOf(rogue.value), preview.info.ignoredApps)
+        assertEquals(listOf(RemoteDir.OVERLAY.path + "/unverified.jpg", RemoteDir.RESTORE.path + "/user-backup.zip"), preview.info.ignoredFiles)
+        assertEquals(listOf(Op.Enable(adPkg)), preview.preview.plan.steps.map { it.op })
+        assertEquals(listOf(RestoreBundleAction(RestoreBundleActionKind.ENABLE_PACKAGE, adPkg.value)), preview.preview.actions)
+        assertFalse(preview.info.canRemoveLauncher)
+    }
+
+    @Test fun importedPreviewSummarizesEveryUndoActionWithItsTarget() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val tv = h.knownTv()
+        h.ranDisable(tv, listOf(adPkg))
+        val home = Samples.launcherComponent
+        val file = RemotePath(RemoteDir.OVERLAY, listOf("config.json"))
+        val ops = listOf(
+            Op.Enable(adPkg), Op.Disable(promoPkg), Op.DefaultState(PackageName("com.example.default")),
+            Op.SettingsPut(SettingKey.SCREENSAVER_ENABLED, "1"), Op.SetHome(home), Op.VerifyHome(home),
+            Op.PressHome, Op.RemoveFile(file), Op.RestartHome(home),
+        )
+        val bundle = ReadBundle(tv.id, tv.facts.model, "0.1.0", Samples.NOW_MS, Samples.miTvSnapshot(),
+            h.ledger.changes(tv.id), emptyMap())
+        h.respond(PlanKind.UNDO_EVERYTHING, ops)
+        val m = RestorePointMachine(h.manageDeps(), backgroundScope, tv.id)
+        settle()
+
+        m.previewImportedBundle(bundle); settle()
+        val preview = assertIs<RestorePhase.BundlePreview>(m.state.value.phase)
+        assertEquals(listOf(
+            RestoreBundleAction(RestoreBundleActionKind.ENABLE_PACKAGE, adPkg.value),
+            RestoreBundleAction(RestoreBundleActionKind.DISABLE_PACKAGE, promoPkg.value),
+            RestoreBundleAction(RestoreBundleActionKind.DEFAULT_PACKAGE, "com.example.default"),
+            RestoreBundleAction(RestoreBundleActionKind.SETTING, "screensaver_enabled = 1"),
+            RestoreBundleAction(RestoreBundleActionKind.HOME, home.flat),
+            RestoreBundleAction(RestoreBundleActionKind.VERIFY_HOME, home.flat),
+            RestoreBundleAction(RestoreBundleActionKind.SHOW_HOME, ""),
+            RestoreBundleAction(RestoreBundleActionKind.REMOVE_FILE, file.absolute),
+            RestoreBundleAction(RestoreBundleActionKind.RESTART_HOME, home.flat),
+        ), preview.preview.actions)
+    }
+
+    @Test fun unsignedBundleCannotAuthorizeRemovalOfPinnedLauncher() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val tv = h.knownTv()
+        h.ranDisable(tv, listOf(adPkg))
+        val launcher = PackageName("com.gathin.tvhome")
+        val forgedLauncherInstall = ChangeRecord(
+            PlanId("01FAKERUN0000000000000005"), 0,
+            Op.Install(RemotePath(RemoteDir.TMP, listOf("forged.apk")), Samples.zeroHash,
+                launcher, 1L, Samples.zeroHash, emptySet()),
+            Prior(present = false), Samples.NOW_MS,
+        )
+        val forgedLauncherStream = ChangeRecord(
+            PlanId("01FAKERUN0000000000000006"), 1,
+            Op.InstallStream(BlobRef(Samples.zeroHash, 1L, "unverified.apk"), Samples.zeroHash,
+                launcher, 1L, Samples.zeroHash),
+            Prior(present = false), Samples.NOW_MS + 1,
+        )
+        val bundle = ReadBundle(tv.id, tv.facts.model, "0.1.0", Samples.NOW_MS, Samples.miTvSnapshot(),
+            h.ledger.changes(tv.id) + forgedLauncherInstall + forgedLauncherStream, emptyMap())
+        h.respond(PlanKind.UNDO_EVERYTHING, listOf(Op.Enable(adPkg)))
+        val m = RestorePointMachine(h.manageDeps(), backgroundScope, tv.id)
+        settle()
+
+        m.previewImportedBundle(bundle); settle()
+        val preview = assertIs<RestorePhase.BundlePreview>(m.state.value.phase)
+        assertEquals(listOf(launcher.value), preview.info.ignoredApps)
+        assertFalse(preview.info.canRemoveLauncher)
+        assertTrue(preview.preview.plan.steps.none { it.op is Op.Uninstall })
+        m.dispatch(RestorePointIntent.RemoveLauncher(true)); settle()
+        val refreshed = assertIs<RestorePhase.BundlePreview>(m.state.value.phase)
+        assertFalse(refreshed.preview.removeLauncher)
+        assertTrue(refreshed.preview.plan.steps.none { it.op is Op.Uninstall })
+
+        val request = h.planner.requests.filterIsInstance<PlanRequest.UndoEverything>().last()
+        assertTrue(request.changes.none { it.op is Op.Install || it.op is Op.InstallStream || it.op is Op.Uninstall })
+        val realPlanner = DefaultPlanner(h.clock, FakeIdGen(), ShellRenderer(), h.configTransport, "0.1.0", profiles = h.profiles)
+        val result = assertIs<PlanResult.Ok>(realPlanner.plan(request, Samples.miTvSnapshot(), h.facts, request.changes))
+        assertTrue(result.plan.steps.none { it.op is Op.Uninstall })
+    }
+
+    @Test fun changedUndoPlanMustBeReviewedAgainBeforeRunning() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val tv = h.knownTv()
+        h.ranDisable(tv, listOf(adPkg))
+        val bundle = ReadBundle(tv.id, tv.facts.model, "0.1.0", Samples.NOW_MS, Samples.miTvSnapshot(), h.ledger.changes(tv.id), emptyMap())
+        val previous = h.planner.respond
+        var undoPlans = 0
+        h.planner.respond = { request, snapshot ->
+            if (request is PlanRequest.UndoEverything) {
+                undoPlans++
+                val ops = if (undoPlans == 1) listOf(Op.Enable(adPkg)) else listOf(Op.Enable(promoPkg))
+                PlanResult.Ok(h.plan(ops, kind = PlanKind.UNDO_EVERYTHING))
+            } else previous(request, snapshot)
+        }
+        val m = RestorePointMachine(h.manageDeps(), backgroundScope, tv.id)
+        settle()
+
+        m.previewImportedBundle(bundle); settle()
+        m.dispatch(RestorePointIntent.Confirm); settle()
+        m.dispatch(RestorePointIntent.PutEverythingBack); settle()
+
+        assertTrue(h.engine.calls.none { it is FakeEngine.Call.Start })
+        val refreshed = assertIs<RestorePhase.BundlePreview>(m.state.value.phase)
+        assertFalse(refreshed.confirming)
+        assertEquals(listOf(Op.Enable(promoPkg)), refreshed.preview.plan.steps.map { it.op })
+    }
+
     @Test fun forgetThisTvAsksForTheCredentialAndDeletesItsRecords() = runTest(timeout = 30.seconds) {
         val h = Harness()
         val tv = h.knownTv()
@@ -368,12 +562,92 @@ class ManageMachinesTest {
     @Test fun deleteEverythingClearsTheDiagnosticsLog() = runTest(timeout = 30.seconds) {
         val h = Harness()
         h.knownTv()
+        val backupStore = AppSettingsBackupStore(h.documents)
+        backupStore.record(AppSettingsBackupHistoryEntry(Samples.NOW_MS, AppSettingsBackupOperation.IMPORT, AppSettingsBackupResult.SUCCESS))
+        backupStore.saveRollback(tv.cleanyour.core.backup.AppSettingsBackupDocument("1.5.0", Samples.NOW_MS, AppSettingsPreferences(true, true)))
         val m = AppSettingsMachine(h.manageDeps(), backgroundScope)
         settle()
         m.dispatch(AppSettingsIntent.Ask(AppConfirm.DELETE_EVERYTHING))
         m.dispatch(AppSettingsIntent.DeleteEverything); settle()
         assertTrue(h.tvs.tvs.value.isEmpty())
         assertEquals(1, h.diagnosticsClears)
+        assertTrue(backupStore.history().isEmpty())
+        assertNull(backupStore.loadRollback())
+    }
+
+    @Test fun appSettingsImportWaitsForConfirmationAndUndoRestoresThePreviousValues() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val deps = h.manageDeps()
+        val before = AppPrefsValue(haptics = true, largeTextFollowsSystem = false)
+        val imported = AppSettingsPreferences(haptics = false, largeTextFollowsSystem = true)
+        deps.appPrefs.save(before)
+        val machine = AppSettingsMachine(deps, backgroundScope)
+        settle()
+
+        val bytes = AppSettingsBackupCodec.encode("1.4.0", h.clock.nowMs(), imported)
+        machine.dispatch(AppSettingsIntent.ImportSettingsStarted)
+        assertTrue(machine.state.value.working)
+        machine.dispatch(AppSettingsIntent.ImportSettingsFile(bytes)); settle()
+        assertEquals(SettingsBackupStatus.PREVIEW_READY, machine.state.value.backupStatus)
+        assertFalse(machine.state.value.working)
+        assertEquals(before, deps.appPrefs.load())
+
+        machine.dispatch(AppSettingsIntent.ConfirmSettingsImport); settle()
+        assertEquals(AppPrefsValue(imported.haptics, imported.largeTextFollowsSystem), deps.appPrefs.load())
+        assertEquals(SettingsBackupStatus.IMPORTED, machine.state.value.backupStatus)
+        assertTrue(machine.state.value.canUndoSettingsImport)
+        assertEquals(AppSettingsBackupResult.SUCCESS, machine.state.value.backupHistory.last().result)
+
+        machine.dispatch(AppSettingsIntent.UndoSettingsImport); settle()
+        assertEquals(before, deps.appPrefs.load())
+        assertEquals(SettingsBackupStatus.UNDONE, machine.state.value.backupStatus)
+        assertFalse(machine.state.value.canUndoSettingsImport)
+        assertEquals(AppSettingsBackupOperation.ROLLBACK, machine.state.value.backupHistory.last().operation)
+    }
+
+    @Test fun appSettingsImportRejectsCorruptFilesWithoutChangingPreferences() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val deps = h.manageDeps()
+        val before = AppPrefsValue(haptics = true, largeTextFollowsSystem = false)
+        deps.appPrefs.save(before)
+        val machine = AppSettingsMachine(deps, backgroundScope)
+        settle()
+
+        machine.dispatch(AppSettingsIntent.ImportSettingsStarted)
+        machine.dispatch(AppSettingsIntent.ImportSettingsFile("{bad json".encodeToByteArray())); settle()
+        assertEquals(SettingsBackupStatus.INVALID, machine.state.value.backupStatus)
+        assertEquals(before, deps.appPrefs.load())
+        assertEquals(AppSettingsBackupResult.REJECTED, machine.state.value.backupHistory.last().result)
+        assertFalse(machine.state.value.canUndoSettingsImport)
+    }
+
+    @Test fun backupPickerOperationsAreSerializedAndPickerCancellationIsRecorded() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val deps = h.manageDeps()
+        val preferences = AppPrefsValue(haptics = true, largeTextFollowsSystem = false)
+        deps.appPrefs.save(preferences)
+        val machine = AppSettingsMachine(deps, backgroundScope)
+        settle()
+
+        machine.dispatch(AppSettingsIntent.ExportSettingsStarted)
+        assertTrue(machine.state.value.working)
+        machine.dispatch(AppSettingsIntent.ImportSettingsStarted)
+        assertEquals(SettingsBackupStatus.EXPORTING, machine.state.value.backupStatus)
+        val exported = AppSettingsBackupCodec.decode(machine.exportSettingsBackup())
+        assertEquals(AppSettingsPreferences(preferences.haptics, preferences.largeTextFollowsSystem), exported.preferences)
+        machine.dispatch(AppSettingsIntent.ExportSettingsFinished(AppSettingsBackupResult.SUCCESS)); settle()
+        assertEquals(SettingsBackupStatus.EXPORTED, machine.state.value.backupStatus)
+        assertFalse(machine.state.value.working)
+        assertEquals(AppSettingsBackupOperation.EXPORT, machine.state.value.backupHistory.last().operation)
+
+        machine.dispatch(AppSettingsIntent.ImportSettingsStarted)
+        assertTrue(machine.state.value.working)
+        machine.dispatch(AppSettingsIntent.ImportSettingsCancelled)
+        machine.dispatch(AppSettingsIntent.ImportSettingsCancelled); settle()
+        assertEquals(SettingsBackupStatus.IDLE, machine.state.value.backupStatus)
+        assertFalse(machine.state.value.working)
+        assertEquals(2, machine.state.value.backupHistory.size)
+        assertEquals(AppSettingsBackupResult.CANCELLED, machine.state.value.backupHistory.last().result)
     }
 
     @Test fun resetMyKeyAlwaysPromptsAndClearsPasses() = runTest(timeout = 30.seconds) {

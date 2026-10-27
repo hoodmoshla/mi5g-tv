@@ -9,9 +9,15 @@ import org.junit.runner.RunWith
 import org.robolectric.ParameterizedRobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import tv.cleanyour.core.flows.RestoreBundleAction
+import tv.cleanyour.core.flows.RestoreBundleActionKind
+import tv.cleanyour.core.flows.RestoreBundleInfo
 import tv.cleanyour.core.flows.RestorePhase
 import tv.cleanyour.core.flows.RestorePointState
 import tv.cleanyour.core.flows.UndoPreview
+import tv.cleanyour.core.model.Op
+import tv.cleanyour.core.model.PackageName
+import tv.cleanyour.core.planner.PlanKind
 import tv.cleanyour.testing.fixtures.Samples
 
 // Every section 4 state of :feature:backup (PRODUCT-SPEC 4: M6 with the Undo everything preview,
@@ -25,6 +31,14 @@ private fun restore(phase: RestorePhase = RestorePhase.Idle, baseline: Long? = N
 
 private val undoLines = listOf("Restore point read", "Turning things back on: 14 of 23...")
 private val preview = UndoPreview(Samples.plan(emptyList()), thingsBack = 23, stockName = "PatchWall", wizardBack = true, removeLauncher = false)
+private val importedPreview = UndoPreview(
+    Samples.plan(listOf(Op.Enable(PackageName("com.example.tv"))), kind = PlanKind.UNDO_EVERYTHING),
+    thingsBack = 1, stockName = null, wizardBack = false, removeLauncher = false, importedChanges = emptyList(),
+    actions = listOf(RestoreBundleAction(RestoreBundleActionKind.ENABLE_PACKAGE, "com.example.tv")),
+)
+private val importedInfo = RestoreBundleInfo("Mi TV 4A", "1.0", NOW, NOW, 1,
+    ignoredApps = listOf("com.example.unverified"), canRemoveLauncher = false,
+    ignoredFiles = listOf("/sdcard/Android/data/com.gathin.tvhome/files/unverified.jpg"))
 private const val BASELINE = "9 Oct, 08:53"
 
 object BackupShots {
@@ -44,6 +58,7 @@ object BackupShots {
         Shot("restore_previewing") { SheetOver({ RestoreScreen(restore(), {}, {}) }) { PreviewLoadingContent() } },
         Shot("restore_preview_keep") { SheetOver({ RestoreScreen(restore(), {}, {}) }) { PreviewContent(preview, BASELINE) {} } },
         Shot("restore_preview_remove") { SheetOver({ RestoreScreen(restore(), {}, {}) }) { PreviewContent(preview.copy(removeLauncher = true, stockName = null, wizardBack = false), BASELINE) {} } },
+        Shot("restore_import_preview") { RestoreScreen(restore(RestorePhase.BundlePreview(importedPreview, importedInfo, confirming = false)), {}, {}) },
         Shot("restore_confirm") { SheetOver({ RestoreScreen(restore(), {}, {}) }) { ConfirmContent {} } },
         Shot("restore_factory_sheet") { SheetOver({ RestoreScreen(restore(googleTv = true), {}, {}) }) { FactoryContent({}, {}) } },
     )

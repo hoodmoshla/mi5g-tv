@@ -185,10 +185,42 @@
     <string name="appsettings_reset_key_title">Reset the key on this phone?</string>
     <string name="appsettings_reset_key_confirm">Reset my key</string>
     <string name="appsettings_delete_all">Delete everything</string>
-    <string name="appsettings_delete_all_note">Deletes every TV record, journal, restore point, the app\'s diagnostics log and the key from this phone. The TVs themselves are not changed, and you won\'t be able to undo from this phone afterwards.</string>
+    <string name="appsettings_delete_all_note">Deletes every TV record, journal and restore point, this app\'s preferences and backup history, its local rollback point and diagnostics log, and the phone key. TVs are not changed. Exported files saved elsewhere are not deleted; this phone will no longer be able to undo its changes.</string>
     <string name="appsettings_delete_all_title">Delete everything on this phone?</string>
     <string name="appsettings_delete_all_confirm">Delete everything</string>
     <string name="appsettings_delete_all_busy">Setup is still working on {tv}. Wait for it to finish or stop it first.</string>
+
+    <string name="appsettings_backup_title">App settings backup</string>
+    <string name="appsettings_backup_scope">Includes only haptics and large-text preferences. It does not include TV records, ADB keys, app data, or data from other apps.</string>
+    <string name="appsettings_backup_export">Export settings</string>
+    <string name="appsettings_backup_export_note">Save a small, readable JSON file using Android’s file picker.</string>
+    <string name="appsettings_backup_import">Import settings</string>
+    <string name="appsettings_backup_import_note">Check the app ID, format and SHA-256 before showing a preview.</string>
+    <string name="appsettings_backup_undo">Restore previous settings</string>
+    <string name="appsettings_backup_undo_note">Undo the last import and restore the two values saved before it.</string>
+    <string name="appsettings_backup_exporting">Preparing settings file…</string>
+    <string name="appsettings_backup_exported">Settings file saved.</string>
+    <string name="appsettings_backup_importing">Checking settings file…</string>
+    <string name="appsettings_backup_applying">Saving the previous settings, then applying the import…</string>
+    <string name="appsettings_backup_imported">Settings imported. You can restore the previous values below.</string>
+    <string name="appsettings_backup_undone">Previous settings restored.</string>
+    <string name="appsettings_backup_invalid">This file is damaged or incompatible. Nothing was changed.</string>
+    <string name="appsettings_backup_failed">Couldn’t finish this operation. Check the file access and try again.</string>
+    <string name="appsettings_backup_undoing">Restoring previous settings…</string>
+    <string name="appsettings_backup_history">Recent backup activity</string>
+    <string name="appsettings_backup_history_line">{operation}: {result}</string>
+    <string name="appsettings_backup_op_export">Export</string>
+    <string name="appsettings_backup_op_import">Import</string>
+    <string name="appsettings_backup_op_rollback">Restore</string>
+    <string name="appsettings_backup_result_success">completed</string>
+    <string name="appsettings_backup_result_cancelled">cancelled</string>
+    <string name="appsettings_backup_result_rejected">rejected</string>
+    <string name="appsettings_backup_result_failed">failed</string>
+    <string name="appsettings_backup_preview_title">Review imported settings</string>
+    <string name="appsettings_backup_preview_note">Only these two app preferences will change. The current values are saved first so you can undo this import. No TV settings or keys are changed.</string>
+    <string name="appsettings_backup_confirm">Apply imported settings</string>
+    <string name="appsettings_backup_on">On</string>
+    <string name="appsettings_backup_off">Off</string>
 
 
     <!-- Stop and undo ask first (Confirmations): a question, one calm sentence, the verb and a way back -->

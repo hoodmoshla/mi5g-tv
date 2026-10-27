@@ -51,10 +51,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import tv.cleanyour.core.engine.PauseReason
 import tv.cleanyour.core.flows.AppConfirm
+import tv.cleanyour.core.backup.AppSettingsBackupHistoryEntry
+import tv.cleanyour.core.backup.AppSettingsBackupOperation
+import tv.cleanyour.core.backup.AppSettingsBackupResult
 import tv.cleanyour.core.flows.AppSettingsIntent
 import tv.cleanyour.core.flows.AppSettingsState
 import tv.cleanyour.core.flows.AppUpdateFailure
 import tv.cleanyour.core.flows.AppUpdateState
+import tv.cleanyour.core.flows.SettingsBackupStatus
 import tv.cleanyour.core.flows.LeftoversIntent
 import tv.cleanyour.core.flows.LeftoversState
 import tv.cleanyour.core.flows.ManageIntent
@@ -438,9 +442,12 @@ fun AppSettingsScreen(
     onOpenInstallPermission: () -> Unit = {},
     onRemindLater: () -> Unit = {},
     installPermissionNeeded: Boolean = false,
+    onExportSettings: () -> Unit = {},
+    onImportSettings: () -> Unit = {},
 ) {
     var licences by rememberSaveable { mutableStateOf(false) }
     var privacy by rememberSaveable { mutableStateOf(false) }
+    val locale = LocalConfiguration.current.locales[0]
     var updateDetails by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(updateStatus) {
         val shouldPrompt = when (updateStatus) {
@@ -546,6 +553,33 @@ fun AppSettingsScreen(
             ListRow(stringResource(R.string.appsettings_report), subtitle = stringResource(R.string.appsettings_report_note),
                 onClick = { onIntent(AppSettingsIntent.ReportProblem) })
         }
+        SectionLabel(stringResource(R.string.appsettings_backup_title))
+        Body(stringResource(R.string.appsettings_backup_scope), Modifier.padding(bottom = 8.dp, start = 4.dp, end = 4.dp))
+        ListGroup {
+            ListRow(stringResource(R.string.appsettings_backup_export), subtitle = stringResource(R.string.appsettings_backup_export_note),
+                onClick = onExportSettings)
+            ListDivider()
+            ListRow(stringResource(R.string.appsettings_backup_import), subtitle = stringResource(R.string.appsettings_backup_import_note),
+                onClick = onImportSettings)
+            if (state.canUndoSettingsImport) {
+                ListDivider()
+                ListRow(stringResource(R.string.appsettings_backup_undo), subtitle = stringResource(R.string.appsettings_backup_undo_note),
+                    onClick = { onIntent(AppSettingsIntent.UndoSettingsImport) })
+            }
+        }
+        backupStatusString(state.backupStatus)?.let { status ->
+            Body(stringResource(status), Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
+                color = if (state.backupStatus == SettingsBackupStatus.INVALID || state.backupStatus == SettingsBackupStatus.FAILED) CytTheme.colors.danger else CytTheme.colors.textSecondary)
+        }
+        if (state.backupHistory.isNotEmpty()) {
+            SectionLabel(stringResource(R.string.appsettings_backup_history))
+            ListGroup {
+                state.backupHistory.takeLast(5).asReversed().forEachIndexed { index, entry ->
+                    if (index > 0) ListDivider()
+                    ListRow(backupHistoryTitle(entry), subtitle = shortDateTime(entry.atMs, locale))
+                }
+            }
+        }
         ListGroup(Modifier.padding(top = 12.dp, bottom = 24.dp)) {
             ListRow(stringResource(R.string.appsettings_reset_key), subtitle = stringResource(R.string.appsettings_reset_key_note),
                 onClick = { onIntent(AppSettingsIntent.Ask(AppConfirm.RESET_KEY)) })
@@ -562,6 +596,62 @@ fun AppSettingsScreen(
     if (privacy) CytBottomSheet({ privacy = false }) { PrivacyContent(online = state.updateCheck || state.addOns) }
     state.confirm?.let { what ->
         CytBottomSheet({ onIntent(AppSettingsIntent.CancelConfirm) }) { ConfirmContent(what, state.working, onIntent) }
+    }
+    if (state.backupStatus == SettingsBackupStatus.PREVIEW_READY) {
+        state.backupDraft?.let { draft ->
+            CytBottomSheet({ onIntent(AppSettingsIntent.CancelSettingsImport) }) {
+                ImportSettingsPreview(draft.preferences.haptics, draft.preferences.largeTextFollowsSystem, state.working, onIntent)
+            }
+        }
+    }
+}
+
+private fun backupStatusString(status: SettingsBackupStatus): Int? = when (status) {
+    SettingsBackupStatus.IDLE, SettingsBackupStatus.PREVIEW_READY -> null
+    SettingsBackupStatus.EXPORTING -> R.string.appsettings_backup_exporting
+    SettingsBackupStatus.EXPORTED -> R.string.appsettings_backup_exported
+    SettingsBackupStatus.IMPORTING -> R.string.appsettings_backup_importing
+    SettingsBackupStatus.APPLYING -> R.string.appsettings_backup_applying
+    SettingsBackupStatus.IMPORTED -> R.string.appsettings_backup_imported
+    SettingsBackupStatus.UNDONE -> R.string.appsettings_backup_undone
+    SettingsBackupStatus.INVALID -> R.string.appsettings_backup_invalid
+    SettingsBackupStatus.FAILED -> R.string.appsettings_backup_failed
+    SettingsBackupStatus.UNDOING -> R.string.appsettings_backup_undoing
+}
+
+@Composable
+private fun backupHistoryTitle(entry: AppSettingsBackupHistoryEntry): String {
+    val operation = stringResource(when (entry.operation) {
+        AppSettingsBackupOperation.EXPORT -> R.string.appsettings_backup_op_export
+        AppSettingsBackupOperation.IMPORT -> R.string.appsettings_backup_op_import
+        AppSettingsBackupOperation.ROLLBACK -> R.string.appsettings_backup_op_rollback
+    })
+    val result = stringResource(when (entry.result) {
+        AppSettingsBackupResult.SUCCESS -> R.string.appsettings_backup_result_success
+        AppSettingsBackupResult.CANCELLED -> R.string.appsettings_backup_result_cancelled
+        AppSettingsBackupResult.REJECTED -> R.string.appsettings_backup_result_rejected
+        AppSettingsBackupResult.FAILED -> R.string.appsettings_backup_result_failed
+    })
+    return msg(R.string.appsettings_backup_history_line, "operation" to operation, "result" to result)
+}
+
+@Composable
+private fun ColumnScope.ImportSettingsPreview(
+    haptics: Boolean,
+    largeTextFollowsSystem: Boolean,
+    working: Boolean,
+    onIntent: (AppSettingsIntent) -> Unit,
+) {
+    SheetHeader(stringResource(R.string.appsettings_backup_preview_title))
+    Body(stringResource(R.string.appsettings_backup_preview_note), Modifier.padding(top = 8.dp))
+    ListGroup(Modifier.padding(top = 16.dp)) {
+        ListRow(stringResource(R.string.appsettings_haptics), value = stringResource(if (haptics) R.string.appsettings_backup_on else R.string.appsettings_backup_off))
+        ListDivider()
+        ListRow(stringResource(R.string.appsettings_large_text), value = stringResource(if (largeTextFollowsSystem) R.string.appsettings_backup_on else R.string.appsettings_backup_off))
+    }
+    ActionColumn(Modifier.padding(top = 20.dp)) {
+        PrimaryButton(stringResource(R.string.appsettings_backup_confirm), { onIntent(AppSettingsIntent.ConfirmSettingsImport) }, enabled = !working)
+        TertiaryButton(stringResource(R.string.action_cancel), { onIntent(AppSettingsIntent.CancelSettingsImport) }, quiet = true)
     }
 }
 

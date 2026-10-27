@@ -80,6 +80,15 @@ object RestoreBundle {
 
     internal fun sha256(bytes: ByteArray): Sha256 =
         Sha256(MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 0xff) })
+
+    internal fun requireWithinTotalLimit(sizes: Iterable<Long>) {
+        var total = 0L
+        for (size in sizes) {
+            require(size >= 0L) { "entry size must not be negative" }
+            require(size <= MAX_TOTAL_BYTES - total) { "the zip is too large" }
+            total += size
+        }
+    }
 }
 
 class ZipRestoreBundleWriter(
@@ -125,6 +134,9 @@ class ZipRestoreBundleWriter(
             })
         }.toString().encodeToByteArray()
 
+        // Match the reader's total uncompressed-byte cap before emitting an archive it cannot reopen.
+        RestoreBundle.requireWithinTotalLimit(entries.values.map { it.size.toLong() } + manifest.size.toLong())
+
         val zip = ZipOutputStream(object : FilterOutputStream(sink) {
             override fun write(b: ByteArray, off: Int, len: Int) { out.write(b, off, len) }
             override fun close() { flush() }
@@ -157,10 +169,17 @@ object RestoreBundleReader {
     fun read(input: InputStream): ReadBundle {
         val files = LinkedHashMap<String, ByteArray>()
         var total = 0L
+        var launcherDirectorySeen = false
         ZipInputStream(input).use { zin ->
             while (true) {
                 val e = zin.nextEntry ?: break
-                if (e.isDirectory) { if (e.name == "launcher/") continue else fail("unexpected folder ${e.name}") }
+                if (e.isDirectory) {
+                    if (e.name != "launcher/") fail("unexpected folder ${e.name.take(80)}")
+                    if (launcherDirectorySeen) fail("launcher/ appears twice")
+                    launcherDirectorySeen = true
+                    if (zin.read() != -1) fail("launcher/ directory must be empty")
+                    continue
+                }
                 if (e.name !in RestoreBundle.ENTRIES) fail("unexpected entry ${e.name.take(80)}")
                 if (e.name in files) fail("entry ${e.name} appears twice")
                 val bytes = readCapped(zin, RestoreBundle.MAX_ENTRY_BYTES) ?: fail("entry ${e.name} is too large")

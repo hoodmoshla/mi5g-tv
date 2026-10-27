@@ -25,6 +25,8 @@
     <string name="restore_row_undo_sub">إعادة التلفاز إلى حالته في {date}</string>
     <string name="restore_row_save">حفظ نسخة</string>
     <string name="restore_row_save_sub">يحفظ ملف zip في المكان الذي تختاره.</string>
+    <string name="restore_row_import">الاستعادة من نسخة</string>
+    <string name="restore_row_import_sub">اختر نسخة ZIP لهذا التلفاز؛ سيُتحقق منها وتُعرض معاينتها قبل إجراء أي تغيير.</string>
     <string name="restore_row_factory">قبل إعادة ضبط المصنع</string>
     <string name="restore_row_factory_sub">يعيد تشغيل معالج الإعداد حتى يبدأ التلفاز بشكل سليم بعد إعادة الضبط.</string>
 
@@ -40,6 +42,36 @@
     <string name="restore_launcher_remove">إزالتها من التلفاز</string>
     <string name="restore_launcher_remove_note">تؤدي إزالتها أيضًا إلى مسح اختيارات بطاقات الوحدات المحفوظة على التلفاز.</string>
     <string name="restore_preview_button">إعادة كل شيء</string>
+
+    <!-- استيراد نسخة الاستعادة: تحقق ومعاينة وتأكيد؛ لا تُنفّذ السكربتات المرفقة -->
+    <string name="restore_bundle_preview_title">ستعيد هذه النسخة التلفاز إلى حالته في {date}:</string>
+    <string name="restore_bundle_preview_detail">الطراز: {model}. حُفظت النسخة في {date}؛ {changes, plural, zero {لا تغييرات مسجلة} one {تغيير واحد مسجل (#)} two {تغييران مسجلان (#)} few {# تغييرات مسجلة} many {# تغييرًا مسجلًا} other {# تغيير مسجل}}.</string>
+    <string name="restore_bundle_untrusted_note">النسخة غير موقعة؛ فحص البصمات يكشف التلف ولا يثبت هوية منشئها. لا يشغّل التطبيق السكربتات المرفقة ولا يزيل تطبيقات استنادًا إلى هذه النسخة. يعرض كل إجراء قبل التأكيد، ويُبقي محتوى الملفات التي يتعذر التحقق منها كما هو.</string>
+    <string name="restore_bundle_confirm_title">هل تريد تطبيق خطة الاستعادة؟</string>
+    <string name="restore_bundle_confirm_body">سيُجري هذا تغييرات على التلفاز المحدد. تابع فقط إذا كنت تعرف مصدر النسخة. سيُطبّق التطبيق الخطة التي عاينتها، ولن يشغّل ملفات ZIP.</string>
+    <string name="restore_bundle_invalid">هذه ليست نسخة استعادة صالحة أو أن الملف تالف. لم يتغير شيء.</string>
+    <string name="restore_bundle_wrong_tv">هذه النسخة تخص تلفازًا آخر. لم يتغير شيء.</string>
+    <string name="restore_bundle_empty">لا تحتوي هذه النسخة على تغييرات مسجلة لاستعادتها.</string>
+    <string name="restore_bundle_too_many">تحتوي النسخة على تغييرات كثيرة جدًا لمعاينتها بأمان. لم يتغير شيء.</string>
+    <string name="restore_bundle_no_actions">لا تحتوي النسخة على إجراءات آمنة لهذا التلفاز. لم يتغير شيء.</string>
+    <string name="restore_bundle_preview_failed">تعذر إنشاء خطة استعادة آمنة. لم يتغير شيء.</string>
+    <string name="restore_bundle_actions_title">إجراءات خطة الاستعادة</string>
+    <string name="restore_bundle_ignored_apps">{count, plural, zero {لن تُطبّق تغييرات هذه النسخة على أي تطبيق غير موثّق.} one {لن تُطبّق تغييرات هذه النسخة على تطبيق واحد غير موثّق.} two {لن تُطبّق تغييرات هذه النسخة على تطبيقين غير موثّقين.} few {لن تُطبّق تغييرات هذه النسخة على # تطبيقات غير موثّقة.} many {لن تُطبّق تغييرات هذه النسخة على # تطبيقًا غير موثّق.} other {لن تُطبّق تغييرات هذه النسخة على # تطبيق غير موثّق.}}</string>
+    <string name="restore_bundle_ignored_apps_names">حزم التطبيقات التي ستُتجاوز: {names}</string>
+    <string name="restore_bundle_ignored_apps_more">و{count} أخرى.</string>
+    <string name="restore_bundle_ignored_files">{count, plural, zero {لن يُتجاوز أي تغيير في الملفات.} one {سيُتجاوز تغيير واحد غير موثّق في الملفات.} two {سيُتجاوز تغييران غير موثّقين في الملفات.} few {سيُتجاوز # تغييرات غير موثّقة في الملفات.} many {سيُتجاوز # تغييرًا غير موثّق في الملفات.} other {سيُتجاوز # تغيير غير موثّق في الملفات.}}</string>
+    <string name="restore_bundle_launcher_remains">لأن هذه النسخة غير موقعة، لا يمكن التحقق ممن ثبّت مشغّل الواجهة؛ لذلك سيبقى مثبتًا.</string>
+    <string name="restore_bundle_action_enable">إعادة تفعيل: {target}</string>
+    <string name="restore_bundle_action_disable">إبقاؤه معطّلًا: {target}</string>
+    <string name="restore_bundle_action_default">إعادة الحالة الافتراضية: {target}</string>
+    <string name="restore_bundle_action_remove_app">إزالة التطبيق: {target}</string>
+    <string name="restore_bundle_action_setting">استعادة الإعداد: {target}</string>
+    <string name="restore_bundle_action_home">تعيين الشاشة الرئيسية: {target}</string>
+    <string name="restore_bundle_action_verify_home">التحقق من الشاشة الرئيسية: {target}</string>
+    <string name="restore_bundle_action_show_home">إظهار الشاشة الرئيسية</string>
+    <string name="restore_bundle_action_file">إزالة الملف: {target}</string>
+    <string name="restore_bundle_action_restart_home">إعادة تشغيل الشاشة الرئيسية: {target}</string>
+    <string name="restore_bundle_action_other">إجراء آخر: {action}</string>
 
     <!-- Undo everything: confirmation sheet -->
     <string name="restore_confirm_title">هل تريد إعادة كل شيء كما كان؟</string>
