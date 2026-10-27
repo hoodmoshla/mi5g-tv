@@ -12,8 +12,8 @@ for a security problem.
 
 Useful to include: the app version (shown in the app settings), the phone and TV models with their Android
 versions, what an attacker can do and from where (same Wi-Fi, the TV, a malicious app on the
-phone, the network path to GitHub), and the steps to reproduce. Redact your TV's serial number
-and your network addresses; we never need them.
+phone, the network path to GitHub), and the steps to reproduce. Redact your TV's serial and MAC
+addresses and your network addresses; we never need them.
 
 What happens next:
 

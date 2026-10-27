@@ -100,7 +100,8 @@ sends nothing itself: you copy it to GitHub, share it, or close the screen.
   Settings, then **Open GitHub**. The "Report a problem" form opens with the app version, the phone,
   the TV and the report filled in; say in a few words what happened. (A report too long for the link
   is copied instead, the button says **Copy and open GitHub**, and you paste it into the last box.)
-  The report is the app's log with addresses, serial numbers, keys and codes removed.
+  The report is the app's log: IPv4 addresses are masked except for the last octet; IPv6 and MAC
+  addresses, serial numbers, keys and codes are redacted.
 - **Your TV isn't listed.** When the app doesn't know your exact TV it is careful and says so. Tap
   **Help add this TV** (on the "We found" screen, or the TV's Manage screen), then **Open GitHub**.
   The "Help add my TV" form opens with the model, the Android version and the report filled in (or,

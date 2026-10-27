@@ -2,6 +2,10 @@
 
 All notable changes to the app. Versions follow [semantic versioning](https://semver.org/).
 
+## Unreleased
+
+- **خصوصية التشخيصات:** تنقيح صيغ MAC الشائعة وعناوين IPv6، بما فيها العناوين المحددة بنطاق وعناوين IPv4-mapped، قبل حفظ السجلات أو مشاركتها. يبقى سلوك IPv4 الحالي كما هو.
+
 ## 1.5.0 (2026-10-26)
 
 ### الجديد في الإصدار 1.5.0

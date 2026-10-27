@@ -8,6 +8,42 @@ import kotlin.test.assertFalse
 class RedactorTest {
     @Test fun addressesKeepOnlyTheLastOctet() = assertEquals("connect x.x.x.50:5555", Redactor.redact("connect 192.168.1.50:5555"))
 
+    @Test fun macAddressesInCommonFormatsAreRedacted() {
+        val text = "peer aa:bb:cc:dd:ee:ff, wired 01-23-45-67-89-ab, cisco aabb.ccdd.eeff"
+        assertEquals("peer [mac], wired [mac], cisco [mac]", Redactor.redact(text))
+    }
+
+    @Test fun ipv6AddressesIncludingBracketsAndZonesAreRedacted() {
+        val text = "address 2001:db8::1, link fe80::1%wlan0, bracket [2001:db8::2]:5555"
+        assertEquals("address [ipv6], link [ipv6], bracket [ipv6]:5555", Redactor.redact(text))
+    }
+
+    @Test fun ipv6CanFollowAFieldLabelWithoutWhitespace() {
+        assertEquals("ip:[ipv6]", Redactor.redact("ip:2001:db8::3"))
+        assertEquals("address:[ipv6]", Redactor.redact("address:2001:db8::4"))
+    }
+
+    @Test fun uncompressedIpv6IsRedacted() {
+        val address = "2001:0db8:0000:0000:0000:ff00:0042:8329"
+        assertEquals("peer [ipv6]", Redactor.redact("peer $address"))
+    }
+
+    @Test fun ipv4EmbeddedIpv6IsRedactedWithoutMaskingTimes() {
+        val text = "mapped ::ffff:192.0.2.128; time 12:34:56"
+        assertEquals("mapped [ipv6]; time 12:34:56", Redactor.redact(text))
+    }
+
+    @Test fun malformedColonTextAndBuildMetadataRemainReadable() {
+        val text = "time 12:34:56; build V816.0.11.0.UZFAABX; malformed 1:2:3"
+        assertEquals(text, Redactor.redact(text))
+    }
+
+    @Test fun malformedAndAdjacentIdentifierTextIsNotPartiallyRedacted() {
+        val text = "bad 2001::db8::1; mapped ::ffff:192.0.2.256; " +
+            "x2001:db8::1 x2001:db8::1g xaa:bb:cc:dd:ee:ffz xaabb.ccdd.eeffz"
+        assertEquals(text, Redactor.redact(text))
+    }
+
     @Test fun keysTokensAndFingerprintsGo() {
         val out = Redactor.redact("key QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFB cleanyourtv fp AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89")
         assertFalse("QUFB" in out)
