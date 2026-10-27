@@ -59,6 +59,7 @@ import tv.cleanyour.core.flows.TvToolsIntent
 import tv.cleanyour.core.flows.TvWriter
 import tv.cleanyour.core.backup.AppSettingsBackupCodec
 import tv.cleanyour.core.backup.AppSettingsBackupResult
+import tv.cleanyour.core.backup.RestoreBundleReader
 import tv.cleanyour.core.model.PlanId
 import tv.cleanyour.core.model.TvId
 import tv.cleanyour.feature.backup.RestoreScreen
@@ -201,6 +202,7 @@ fun AppRoot(graph: AppGraph, start: Dest, onExit: () -> Unit) {
         e: ManageEffect,
         onDocument: (String) -> Unit = {},
         onUndo: (ManageEffect.Snackbar) -> Unit = {},
+        onPickRestoreBundle: () -> Unit = {},
         onPickApk: () -> Unit = {},
         onPickCastMedia: () -> Unit = {},
         onDownloadUrlApk: (String, String) -> Unit = { _, _ -> },
@@ -213,6 +215,7 @@ fun AppRoot(graph: AppGraph, start: Dest, onExit: () -> Unit) {
             ManageEffect.HapticLight -> haptic(HapticFeedbackConstants.CLOCK_TICK)
             ManageEffect.HapticDouble -> haptic(HapticFeedbackConstants.LONG_PRESS)
             is ManageEffect.CreateDocument -> onDocument(e.suggestedName)
+            ManageEffect.PickRestoreBundle -> onPickRestoreBundle()
             ManageEffect.PickApk -> onPickApk()
             ManageEffect.PickCastMedia -> onPickCastMedia()
             is ManageEffect.SharePng -> sharePng(context, e.png, e.fileName)
@@ -289,7 +292,30 @@ fun AppRoot(graph: AppGraph, start: Dest, onExit: () -> Unit) {
                             withContext(Dispatchers.IO) { context.contentResolver.openOutputStream(uri) }?.use { out -> m.writeBundle(out) }
                         }
                     }
-                    LaunchedEffect(m) { m.effects.collect { onManageEffect(it, onDocument = { name -> create.launch(name) }) } }
+                    val open = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                        if (uri == null) scope.launch { m.importBundleCancelled() }
+                        else scope.launch {
+                            val bundle = runCatching {
+                                withContext(Dispatchers.IO) {
+                                    context.contentResolver.openInputStream(uri)?.use { RestoreBundleReader.read(it) }
+                                        ?: error("could not open selected document")
+                                }
+                            }.getOrNull()
+                            if (bundle == null) m.importBundleReadFailed() else m.previewImportedBundle(bundle)
+                        }
+                    }
+                    LaunchedEffect(m) {
+                        m.effects.collect {
+                            onManageEffect(
+                                it,
+                                onDocument = { name -> create.launch(name) },
+                                onPickRestoreBundle = {
+                                    runCatching { open.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) }
+                                        .onFailure { scope.launch { m.importBundleReadFailed() } }
+                                },
+                            )
+                        }
+                    }
                     // D35: the backup export is FLAG_SECURE while it is written.
                     SecureWindow(state.exporting)
                     RestoreScreen(state, m::dispatch, onBack = { go("back") })

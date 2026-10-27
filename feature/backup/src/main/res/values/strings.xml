@@ -29,6 +29,8 @@
     <string name="restore_row_undo_sub">Put the TV back to how it was on {date}</string>
     <string name="restore_row_save">Save a copy</string>
     <string name="restore_row_save_sub">Saves a zip file to a place you choose.</string>
+    <string name="restore_row_import">Restore from a copy</string>
+    <string name="restore_row_import_sub">Choose a restore ZIP for this TV. It is checked and previewed before anything changes.</string>
     <string name="restore_row_factory">Before a factory reset</string>
     <string name="restore_row_factory_sub">Switches the setup wizard back on, so the TV can start up properly after a reset.</string>
 
@@ -44,6 +46,36 @@
     <string name="restore_launcher_remove">Remove it from the TV</string>
     <string name="restore_launcher_remove_note">Removing it also removes the answers module cards have given on the TV.</string>
     <string name="restore_preview_button">Put everything back</string>
+
+    <!-- Import a restore copy: validate, preview and confirm; archived scripts are never executed -->
+    <string name="restore_bundle_preview_title">This copy restores the TV to how it was on {date}:</string>
+    <string name="restore_bundle_preview_detail">Model: {model}. Copy saved {date}; {changes, plural, one {# recorded change} other {# recorded changes}}.</string>
+    <string name="restore_bundle_untrusted_note">The copy is not signed: hashes can detect damage, not prove who created it. The app never runs bundled scripts or uninstalls apps based on this copy. It shows each planned action before confirmation; unverified file contents are left unchanged.</string>
+    <string name="restore_bundle_confirm_title">Apply this recovery plan?</string>
+    <string name="restore_bundle_confirm_body">This will change the selected TV. Continue only if you recognize this copy. The app will apply the reviewed plan, not run files from the ZIP.</string>
+    <string name="restore_bundle_invalid">This is not a valid restore copy, or the file is damaged. Nothing was changed.</string>
+    <string name="restore_bundle_wrong_tv">This copy belongs to a different TV. Nothing was changed.</string>
+    <string name="restore_bundle_empty">This copy contains no recorded changes to restore.</string>
+    <string name="restore_bundle_too_many">This copy has too many changes to preview safely. Nothing was changed.</string>
+    <string name="restore_bundle_no_actions">This copy contains no safe actions for this TV. Nothing was changed.</string>
+    <string name="restore_bundle_preview_failed">A safe recovery plan could not be created. Nothing was changed.</string>
+    <string name="restore_bundle_actions_title">Actions in this recovery plan</string>
+    <string name="restore_bundle_ignored_apps">{count, plural, one {Changes for one unverified app will be skipped.} other {Changes for # unverified apps will be skipped.}}</string>
+    <string name="restore_bundle_ignored_apps_names">Skipped app packages: {names}</string>
+    <string name="restore_bundle_ignored_apps_more">And {count} more.</string>
+    <string name="restore_bundle_ignored_files">{count, plural, one {One unverified file change will be skipped.} other {# unverified file changes will be skipped.}}</string>
+    <string name="restore_bundle_launcher_remains">Because this copy is unsigned, the app cannot verify who installed the launcher, so it will stay installed.</string>
+    <string name="restore_bundle_action_enable">Turn back on: {target}</string>
+    <string name="restore_bundle_action_disable">Leave disabled: {target}</string>
+    <string name="restore_bundle_action_default">Restore default state: {target}</string>
+    <string name="restore_bundle_action_remove_app">Remove app: {target}</string>
+    <string name="restore_bundle_action_setting">Restore setting: {target}</string>
+    <string name="restore_bundle_action_home">Set home screen: {target}</string>
+    <string name="restore_bundle_action_verify_home">Check home screen: {target}</string>
+    <string name="restore_bundle_action_show_home">Show the home screen</string>
+    <string name="restore_bundle_action_file">Remove file: {target}</string>
+    <string name="restore_bundle_action_restart_home">Restart home screen: {target}</string>
+    <string name="restore_bundle_action_other">Other action: {action}</string>
 
     <!-- Undo everything: confirmation sheet -->
     <string name="restore_confirm_title">Put everything back?</string>
