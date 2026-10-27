@@ -240,6 +240,23 @@
     <string name="tvtools_speed_boosting">جارٍ تنظيف الكاش وإغلاق تطبيقات الخلفية...</string>
     <string name="tvtools_speed_boosted">تم تنظيف الكاش وإغلاق {count} تطبيقات في الخلفية بنجاح.</string>
     <string name="tvtools_speed_failed">تعذّر تسريع التلفاز. تحقق من اتصال التلفاز.</string>
+    <string name="tvtools_network_section">شبكة التلفاز وDNS</string>
+    <string name="tvtools_network_note">قراءة محلية فقط للإعدادات؛ لا تغيّر DNS ولا تختبر الوصول إلى الإنترنت، وقد لا تعرض بعض أجهزة التلفاز عناوين خوادم DNS.</string>
+    <string name="tvtools_network_read">قراءة إعدادات الشبكة</string>
+    <string name="tvtools_network_reading">جارٍ قراءة إعدادات الشبكة من التلفاز...</string>
+    <string name="tvtools_network_not_checked">لم تُقرأ إعدادات الشبكة بعد.</string>
+    <string name="tvtools_network_failed">تعذّرت قراءة إعدادات الشبكة؛ ستظل أي قراءة سابقة محفوظة.</string>
+    <string name="tvtools_network_dns_servers">خوادم DNS: {servers}</string>
+    <string name="tvtools_network_dns_none">لا يعرض هذا التلفاز عناوين خوادم DNS.</string>
+    <string name="tvtools_network_private_dns">وضع Private DNS: {mode}</string>
+    <string name="tvtools_network_private_dns_off">متوقف</string>
+    <string name="tvtools_network_private_dns_auto">تلقائي</string>
+    <string name="tvtools_network_private_dns_hostname">اسم مضيف المزوّد</string>
+    <string name="tvtools_network_private_dns_unknown">غير معروف</string>
+    <string name="tvtools_network_private_dns_provider">مضيف Private DNS: {hostname}</string>
+    <string name="tvtools_network_gateway">البوابة الافتراضية: {gateway}</string>
+    <string name="tvtools_network_interface">واجهة الشبكة: {name}</string>
+    <string name="tvtools_network_no_route">لم يعرض التلفاز مسارًا افتراضيًا.</string>
     <string name="tvtools_anim_label">تسريع حركة القوائم</string>
     <string name="tvtools_anim_fast">سريع (0.5x)</string>
     <string name="tvtools_anim_off">فوري (إيقاف الحركة)</string>
@@ -333,4 +350,3 @@
     <string name="tvtools_power_done">تم التنفيذ بنجاح: {name}.</string>
     <string name="tvtools_power_failed">تعذّر التنفيذ على التلفاز: {name}.</string>
 </resources>
-

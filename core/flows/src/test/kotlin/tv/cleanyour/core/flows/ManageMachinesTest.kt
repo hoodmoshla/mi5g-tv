@@ -960,6 +960,32 @@ class ManageMachinesTest {
         assertTrue(h.session.calls.any { it is FakeTvSession.Call.InstallStream })
     }
 
+    @Test fun networkDiagnosticsReadOnlySettingsAndParseDnsRoute() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val tv = h.knownTv()
+        h.session.recording.on("getprop net.dns1", "192.168.1.2\n")
+        h.session.recording.on("getprop net.dns2", "1.1.1.1\n")
+        h.session.recording.on("getprop net.dns3", "null\n")
+        h.session.recording.on("getprop net.dns4", "\n")
+        h.session.recording.on("settings get global private_dns_mode", "opportunistic\n")
+        h.session.recording.on("settings get global private_dns_specifier", "null\n")
+        h.session.recording.on("ip route show default", "default via 192.168.1.1 dev wlan0 proto dhcp\n")
+        val tools = TvToolsMachine(h.manageDeps(), backgroundScope, tv.id)
+        settle()
+
+        tools.dispatch(TvToolsIntent.RefreshNetworkDiagnostics)
+        settle()
+
+        assertEquals(TvNetworkDiagnosticsStatus.READY, tools.state.value.networkDiagnosticsStatus)
+        val diagnostics = assertNotNull(tools.state.value.networkDiagnostics)
+        assertEquals(listOf("192.168.1.2", "1.1.1.1"), diagnostics.dnsServers)
+        assertEquals(TvPrivateDnsMode.AUTOMATIC, diagnostics.privateDnsMode)
+        assertNull(diagnostics.privateDnsProviderHostname)
+        assertEquals("192.168.1.1", diagnostics.defaultGateway)
+        assertEquals("wlan0", diagnostics.networkInterface)
+        assertTrue(h.session.execLines.none { "ping" in it || "settings' 'put" in it })
+    }
+
     @Test fun installHomeScreenFromNotOnTvInstallsAndActivatesTheLauncher() = runTest(timeout = 30.seconds) {
         val h = Harness()
         val tv = h.knownTv().copy(nickname = "AndroidTV", profileId = null).also { h.tvs.upsert(it) }

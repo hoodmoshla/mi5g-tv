@@ -416,6 +416,20 @@ class ShellRenderer(private val watchdogVariant: WatchdogVariant = WatchdogVaria
         fun dfDataLine(): ShellLine =
             ShellLine(ShellTokens.line(listOf("df", "-k", "/data")))
 
+        fun networkDnsLine(index: Int): ShellLine {
+            require(index in 1..4) { "DNS property index must be between 1 and 4" }
+            return ShellLine(ShellTokens.line(listOf("getprop", "net.dns$index")))
+        }
+
+        fun privateDnsModeLine(): ShellLine =
+            ShellLine(ShellTokens.line(listOf(SETTINGS, "get", "global", "private_dns_mode")))
+
+        fun privateDnsSpecifierLine(): ShellLine =
+            ShellLine(ShellTokens.line(listOf(SETTINGS, "get", "global", "private_dns_specifier")))
+
+        fun defaultRouteLine(): ShellLine =
+            ShellLine(ShellTokens.line(listOf("ip", "route", "show", "default")))
+
         fun trimCachesLine(): ShellLine =
             ShellLine(ShellTokens.line(listOf(PM, "trim-caches", "999999999G")))
 

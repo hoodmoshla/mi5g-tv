@@ -72,6 +72,8 @@ import tv.cleanyour.core.flows.RemoteStatus
 import tv.cleanyour.core.flows.ScreenshotStatus
 import tv.cleanyour.core.flows.SideloadStatus
 import tv.cleanyour.core.flows.SpeedBoostStatus
+import tv.cleanyour.core.flows.TvNetworkDiagnosticsStatus
+import tv.cleanyour.core.flows.TvPrivateDnsMode
 import tv.cleanyour.core.flows.TvAppActionKind
 import tv.cleanyour.core.flows.TvAppActionStatus
 import tv.cleanyour.core.flows.TvAppFilter
@@ -606,6 +608,53 @@ fun TvToolsScreen(state: TvToolsState, onIntent: (TvToolsIntent) -> Unit, onBack
                         style = CytTheme.type.bodyMedium.copy(fontWeight = FontWeight.Medium),
                     )
                     ProgressBar(perf.storageUsedFraction)
+                }
+            }
+        }
+        SectionLabel(stringResource(R.string.tvtools_network_section))
+        Body(stringResource(R.string.tvtools_network_note), Modifier.padding(start = 4.dp, end = 4.dp, bottom = 8.dp))
+        TertiaryButton(
+            stringResource(R.string.tvtools_network_read),
+            { onIntent(TvToolsIntent.RefreshNetworkDiagnostics) },
+            enabled = state.networkDiagnosticsStatus != TvNetworkDiagnosticsStatus.READING,
+        )
+        when (state.networkDiagnosticsStatus) {
+            TvNetworkDiagnosticsStatus.IDLE -> Body(
+                stringResource(R.string.tvtools_network_not_checked),
+                Modifier.padding(top = 8.dp, start = 4.dp),
+            )
+            TvNetworkDiagnosticsStatus.READING -> LiveLine(stringResource(R.string.tvtools_network_reading))
+            TvNetworkDiagnosticsStatus.FAILED -> Body(
+                stringResource(R.string.tvtools_network_failed),
+                Modifier.padding(top = 8.dp, start = 4.dp),
+                color = CytTheme.colors.danger,
+            )
+            TvNetworkDiagnosticsStatus.READY -> {}
+        }
+        state.networkDiagnostics?.let { network ->
+            val dnsServers = network.dnsServers.takeIf { it.isNotEmpty() }?.joinToString(", ")
+                ?: stringResource(R.string.tvtools_network_dns_none)
+            val privateDnsMode = stringResource(
+                when (network.privateDnsMode) {
+                    TvPrivateDnsMode.OFF -> R.string.tvtools_network_private_dns_off
+                    TvPrivateDnsMode.AUTOMATIC -> R.string.tvtools_network_private_dns_auto
+                    TvPrivateDnsMode.PROVIDER_HOSTNAME -> R.string.tvtools_network_private_dns_hostname
+                    TvPrivateDnsMode.UNKNOWN -> R.string.tvtools_network_private_dns_unknown
+                },
+            )
+            ListGroup(Modifier.padding(top = 8.dp, bottom = 12.dp)) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Body(msg(R.string.tvtools_network_dns_servers, "servers" to dnsServers))
+                    Body(msg(R.string.tvtools_network_private_dns, "mode" to privateDnsMode))
+                    network.privateDnsProviderHostname?.let {
+                        Body(msg(R.string.tvtools_network_private_dns_provider, "hostname" to it))
+                    }
+                    network.defaultGateway?.let { gateway ->
+                        Body(msg(R.string.tvtools_network_gateway, "gateway" to gateway))
+                    } ?: Body(stringResource(R.string.tvtools_network_no_route))
+                    network.networkInterface?.let {
+                        Body(msg(R.string.tvtools_network_interface, "name" to it))
+                    }
                 }
             }
         }
