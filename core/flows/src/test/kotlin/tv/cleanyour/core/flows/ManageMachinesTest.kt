@@ -27,6 +27,7 @@ import tv.cleanyour.core.model.Op
 import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.core.model.PermissionStatement
 import tv.cleanyour.core.model.PlanId
+import tv.cleanyour.core.store.DocumentStore
 import tv.cleanyour.core.model.Tier
 import tv.cleanyour.core.model.Tv
 import tv.cleanyour.core.model.TvAnimationScale
@@ -56,6 +57,7 @@ import tv.cleanyour.testing.fixtures.FakeCredentialGate
 import tv.cleanyour.testing.fixtures.FakeEngine
 import tv.cleanyour.testing.fixtures.Samples
 import tv.cleanyour.testing.fixtures.sha256Of
+import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -415,6 +417,45 @@ class ManageMachinesTest {
         assertEquals(SettingsBackupStatus.UNDONE, machine.state.value.backupStatus)
         assertFalse(machine.state.value.canUndoSettingsImport)
         assertEquals(AppSettingsBackupOperation.ROLLBACK, machine.state.value.backupHistory.last().operation)
+    }
+
+    @Test fun failedSettingsImportReloadsPersistedValuesAndKeepsRollbackAvailable() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        var settingsWrites = 0
+        val faultingDocuments = object : DocumentStore {
+            override suspend fun <T> read(path: String, decode: (ByteArray) -> T): T? = h.documents.read(path, decode)
+
+            override suspend fun write(path: String, bytes: ByteArray) {
+                if (path == AppSettingsBackupStore.HISTORY_PATH) throw IOException("simulated history write failure")
+                if (path == "settings.txt") {
+                    settingsWrites++
+                    if (settingsWrites == 3) throw IOException("simulated compensating write failure")
+                }
+                h.documents.write(path, bytes)
+            }
+
+            override suspend fun delete(path: String) { h.documents.delete(path) }
+            override suspend fun list(dir: String): List<String> = h.documents.list(dir)
+        }
+        val deps = h.manageDeps(documents = faultingDocuments)
+        val before = AppPrefsValue(haptics = true, largeTextFollowsSystem = false)
+        val imported = AppSettingsPreferences(haptics = false, largeTextFollowsSystem = true)
+        deps.appPrefs.save(before)
+        val machine = AppSettingsMachine(deps, backgroundScope)
+        settle()
+
+        val bytes = AppSettingsBackupCodec.encode("1.4.0", h.clock.nowMs(), imported)
+        machine.dispatch(AppSettingsIntent.ImportSettingsStarted)
+        machine.dispatch(AppSettingsIntent.ImportSettingsFile(bytes)); settle()
+        machine.dispatch(AppSettingsIntent.ConfirmSettingsImport); settle()
+
+        val persisted = AppPrefsValue(imported.haptics, imported.largeTextFollowsSystem)
+        assertEquals(SettingsBackupStatus.FAILED, machine.state.value.backupStatus)
+        assertEquals(persisted, deps.appPrefs.load())
+        assertEquals(persisted, machine.state.value.prefs, "the screen reflects persisted preferences after compensation fails")
+        assertTrue(machine.state.value.canUndoSettingsImport)
+        val rollback = AppSettingsBackupStore(faultingDocuments).loadRollback()
+        assertEquals(AppSettingsPreferences(before.haptics, before.largeTextFollowsSystem), rollback?.preferences)
     }
 
     @Test fun appSettingsImportRejectsCorruptFilesWithoutChangingPreferences() = runTest(timeout = 30.seconds) {

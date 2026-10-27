@@ -272,7 +272,8 @@ class AppSettingsMachine(
             settingsBackup.apply(draft)
             refreshBackup(SettingsBackupStatus.IMPORTED, prefs = d.appPrefs.load(), working = false)
         } catch (_: Exception) {
-            refreshBackup(SettingsBackupStatus.FAILED, working = false)
+            val persisted = attempt { d.appPrefs.load() }.getOrNull()
+            refreshBackup(SettingsBackupStatus.FAILED, prefs = persisted, working = false)
         }
     }
 
@@ -283,7 +284,8 @@ class AppSettingsMachine(
             if (restored == null) refreshBackup(SettingsBackupStatus.FAILED, working = false)
             else refreshBackup(SettingsBackupStatus.UNDONE, prefs = d.appPrefs.load(), working = false)
         } catch (_: Exception) {
-            refreshBackup(SettingsBackupStatus.FAILED, working = false)
+            val persisted = attempt { d.appPrefs.load() }.getOrNull()
+            refreshBackup(SettingsBackupStatus.FAILED, prefs = persisted, working = false)
         }
     }
 
