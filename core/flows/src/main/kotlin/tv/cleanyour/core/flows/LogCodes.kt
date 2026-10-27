@@ -102,7 +102,8 @@ internal object Scrub {
     private val MAC = Regex("\\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\\b")
     private val TV_ID = Regex("\\b[0-9a-f]{16}\\b")
     private val BLOB = Regex("[A-Za-z0-9+_=-]{40,}")
-    private val SERIAL = Regex("(?i)(serial(?:no)?|ro\\.serialno|ro\\.boot\\.serialno)([\"'\\]\\s:=\\[]+)([A-Za-z0-9]{4,})")
+    // Treat "serial number" as one label so the word "number" is not mistaken for the identifier.
+    private val SERIAL = Regex("(?i)(serial(?:no|\\s+number)?|ro\\.serialno|ro\\.boot\\.serialno)([\"'\\]\\s:=\\[]+)([A-Za-z0-9]{4,})")
     // Quoted names may contain spaces/commas; unquoted values stop at the next field to preserve the log.
     private const val SSID_FIELD_KEY = "(?:[A-Za-z_][A-Za-z0-9_.-]*|wifi[ _-]?name)"
     private val SSID = Regex(
