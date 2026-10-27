@@ -58,6 +58,14 @@ class RedactorTest {
         assertFalse("HomeNet" in out)
     }
 
+    @Test fun serialNumberLabelsRedactTheEntireIdentifier() {
+        val cases = listOf(
+            "Serial number: ABC123XYZ789" to "Serial number: [serial]",
+            "serial number ABC123XYZ789" to "serial number [serial]",
+        )
+        for ((input, expected) in cases) assertEquals(expected, Redactor.redact(input))
+    }
+
     @Test fun wifiNamesWithSpacesAndCommasAreRedactedCompletely() {
         val text = """ssid="Home Network, Guest", wifi name='Family Room', ssid:Office, Lobby Network; signal=-50"""
         assertEquals("ssid=[wifi], wifi name=[wifi], ssid:[wifi]; signal=-50", Redactor.redact(text))

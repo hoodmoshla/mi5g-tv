@@ -19,7 +19,8 @@ object Redactor {
     // a sentence ("from 192.168.1.20.") still masks: only a dot followed by a letter or digit counts.
     private const val OCTET = "(25[0-5]|2[0-4]\\d|[01]?\\d?\\d)"
     private val IPV4 = Regex("(?<![A-Za-z0-9.])$OCTET\\.$OCTET\\.$OCTET\\.$OCTET(?![A-Za-z0-9]|\\.[A-Za-z0-9])")
-    private val SERIAL = Regex("(?i)(serial(?:no)?|ro\\.serialno|ro\\.boot\\.serialno)([\"'\\]\\s:=\\[]+)([A-Za-z0-9]{4,})")
+    // Treat "serial number" as one label so the word "number" is not mistaken for the identifier.
+    private val SERIAL = Regex("(?i)(serial(?:no|\\s+number)?|ro\\.serialno|ro\\.boot\\.serialno)([\"'\\]\\s:=\\[]+)([A-Za-z0-9]{4,})")
     private val TV_ID = Regex("\\b[0-9a-f]{16}\\b")
     private val CODE = Regex("(?<![\\d.])\\d{6}(?![\\d.])")
     // Quoted names may contain spaces/commas; unquoted values stop at the next field to preserve the log.
