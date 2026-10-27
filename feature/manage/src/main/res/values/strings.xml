@@ -219,6 +219,7 @@
     <string name="tvtools_remote_sending">Sending command to TV...</string>
     <string name="tvtools_remote_sent">Command sent to TV.</string>
     <string name="tvtools_remote_failed">Could not reach the TV. Check the connection.</string>
+    <string name="tvtools_remote_command_failed">The TV returned an error for this command.</string>
     <string name="tvtools_text_section">Send text to TV</string>
     <string name="tvtools_text_label">Text to type on the TV</string>
     <string name="tvtools_text_send">Send</string>
@@ -340,4 +341,3 @@
     <string name="tvtools_power_done">Completed on TV: {name}.</string>
     <string name="tvtools_power_failed">Could not run on TV: {name}.</string>
 </resources>
-

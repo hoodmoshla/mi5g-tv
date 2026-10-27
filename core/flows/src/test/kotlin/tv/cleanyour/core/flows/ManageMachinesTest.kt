@@ -987,7 +987,7 @@ class ManageMachinesTest {
 
         tools.dispatch(TvToolsIntent.PressKey(TvKeyEvent.DPAD_CENTER))
         settle()
-        assertEquals(RemoteStatus.Failed, tools.state.value.remoteStatus)
+        assertEquals(RemoteStatus.CommandFailed, tools.state.value.remoteStatus)
     }
 
     @Test fun installHomeScreenFromNotOnTvInstallsAndActivatesTheLauncher() = runTest(timeout = 30.seconds) {

@@ -212,6 +212,7 @@
     <string name="tvtools_remote_sending">جارٍ إرسال الأمر إلى التلفاز...</string>
     <string name="tvtools_remote_sent">تم إرسال الأمر إلى التلفاز.</string>
     <string name="tvtools_remote_failed">تعذّر الوصول إلى التلفاز. تحقق من الاتصال.</string>
+    <string name="tvtools_remote_command_failed">أعاد التلفاز خطأً عند تنفيذ هذا الأمر.</string>
     <string name="tvtools_text_section">إرسال نص للتلفاز</string>
     <string name="tvtools_text_label">النص المراد كتابته على التلفاز</string>
     <string name="tvtools_text_send">إرسال</string>
@@ -333,4 +334,3 @@
     <string name="tvtools_power_done">تم التنفيذ بنجاح: {name}.</string>
     <string name="tvtools_power_failed">تعذّر التنفيذ على التلفاز: {name}.</string>
 </resources>
-
