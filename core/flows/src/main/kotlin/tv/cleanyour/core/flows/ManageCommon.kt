@@ -17,6 +17,13 @@ import tv.cleanyour.core.model.Prior
 import tv.cleanyour.core.model.Profile
 import tv.cleanyour.core.model.Tv
 import tv.cleanyour.core.model.TvId
+import java.io.IOException
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.security.MessageDigest
+import java.util.Locale
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import tv.cleanyour.core.ops.ConfigTransport
 import tv.cleanyour.core.probe.Prober
 import tv.cleanyour.core.registry.ArtifactFetcher
@@ -134,6 +141,7 @@ data class HomeChoice(
 
 class HomePrefs(private val store: DocumentStore) {
     private fun path(id: TvId) = "tvs/${id.value}/home.txt"
+    private val presetMutex = Mutex()
 
     suspend fun load(id: TvId): HomeChoice? = store.read(path(id)) { bytes ->
         val map = bytes.decodeToString().lines().filter { '=' in it }.associate { it.substringBefore('=') to it.substringAfter('=') }
@@ -154,7 +162,100 @@ class HomePrefs(private val store: DocumentStore) {
             }
         store.write(path(id), text.encodeToByteArray())
     }
+
+    suspend fun presets(id: TvId): List<LauncherPreset> = presetMutex.withLock { loadPresets(id) }
+
+    suspend fun savePreset(id: TvId, rawName: String, choice: HomeChoice): LauncherPresetSaveResult = presetMutex.withLock {
+        val name = normalizedPresetName(rawName) ?: return@withLock LauncherPresetSaveResult.INVALID_NAME
+        val existing = loadPresets(id)
+        if (existing.any { it.name.equals(name, ignoreCase = true) }) return@withLock LauncherPresetSaveResult.DUPLICATE_NAME
+        if (existing.size >= MAX_PRESETS) return@withLock LauncherPresetSaveResult.LIMIT_REACHED
+        if (choice.dock.size > MAX_DOCK_APPS) return@withLock LauncherPresetSaveResult.INVALID_LAYOUT
+        val bytes = encodePreset(LauncherPreset(name, choice)).toByteArray(Charsets.UTF_8)
+        if (bytes.size > MAX_PRESET_BYTES) return@withLock LauncherPresetSaveResult.INVALID_LAYOUT
+        store.write(presetPath(id, name), bytes)
+        LauncherPresetSaveResult.SAVED
+    }
+
+    suspend fun deletePreset(id: TvId, rawName: String): Boolean = presetMutex.withLock {
+        val name = normalizedPresetName(rawName) ?: return@withLock false
+        val existing = loadPresets(id).firstOrNull { it.name.equals(name, ignoreCase = true) } ?: return@withLock false
+        store.delete(presetPath(id, existing.name))
+        true
+    }
+
+    private suspend fun loadPresets(id: TvId): List<LauncherPreset> {
+        val directory = presetDirectory(id)
+        val files = try { store.list(directory) } catch (_: IOException) { return emptyList() }
+        val loaded = mutableListOf<LauncherPreset>()
+        for (file in files.asSequence().filter { PRESET_FILE.matches(it) }.take(MAX_PRESETS * 2)) {
+            val preset = try { store.read("$directory/$file", ::decodePreset) } catch (_: IOException) { null }
+            if (preset != null) loaded += preset
+        }
+        return loaded.distinctBy { it.name.lowercase(Locale.ROOT) }
+            .sortedBy { it.name.lowercase(Locale.ROOT) }.take(MAX_PRESETS)
+    }
+
+    private fun presetDirectory(id: TvId) = "tvs/${id.value}/launcher-presets"
+    private fun presetPath(id: TvId, name: String) = "${presetDirectory(id)}/${presetFileKey(name)}.txt"
+
+    private fun presetFileKey(name: String): String {
+        val bytes = MessageDigest.getInstance("SHA-256").digest(name.lowercase(Locale.ROOT).toByteArray(Charsets.UTF_8))
+        return buildString(bytes.size * 2) {
+            bytes.forEach { byte ->
+                val value = byte.toInt() and 0xff
+                append(HEX[value ushr 4]); append(HEX[value and 0x0f])
+            }
+        }
+    }
+
+    private fun encodePreset(preset: LauncherPreset): String = listOf(
+        "version=1",
+        "name=${encodeField(preset.name)}",
+        "theme=${encodeField(preset.choice.themeId.orEmpty())}",
+        "cards=${preset.choice.cards?.toString().orEmpty()}",
+        "dock=${preset.choice.dock.joinToString(",") { encodeField(it.value) }}",
+    ).joinToString("\n") + "\n"
+
+    private fun decodePreset(bytes: ByteArray): LauncherPreset? {
+        if (bytes.size > MAX_PRESET_BYTES) return null
+        val fields = bytes.decodeToString().lineSequence().filter { '=' in it }
+            .associate { it.substringBefore('=') to it.substringAfter('=') }
+        if (fields["version"] != "1") return null
+        val rawName = decodeField(fields["name"] ?: return null) ?: return null
+        val name = normalizedPresetName(rawName) ?: return null
+        if (name != rawName) return null
+        val themeText = decodeField(fields["theme"].orEmpty()) ?: return null
+        val theme = themeText.takeIf { it.isNotBlank() }
+        val cards = when (fields["cards"]) { "true" -> true; "false" -> false; "" -> null; else -> return null }
+        val encodedDock = fields["dock"].orEmpty()
+        val dockFields = if (encodedDock.isEmpty()) emptyList() else encodedDock.split(',')
+        if (dockFields.size > MAX_DOCK_APPS) return null
+        val dock = dockFields.map { encoded -> decodeField(encoded)?.let { runCatching { PackageName(it) }.getOrNull() } ?: return null }
+        return LauncherPreset(name, HomeChoice(dock, theme, cards))
+    }
+
+    private fun normalizedPresetName(rawName: String): String? {
+        val name = rawName.trim()
+        if (name.isBlank() || name.length > MAX_PRESET_NAME_CHARS || name.any { Character.isISOControl(it) }) return null
+        return name
+    }
+
+    private fun encodeField(value: String): String = URLEncoder.encode(value, "UTF-8")
+    private fun decodeField(value: String): String? = try { URLDecoder.decode(value, "UTF-8") } catch (_: IllegalArgumentException) { null }
+
+    companion object {
+        const val MAX_PRESETS = 12
+        const val MAX_PRESET_NAME_CHARS = 32
+        const val MAX_DOCK_APPS = 64
+        private const val MAX_PRESET_BYTES = 16 * 1024
+        private const val HEX = "0123456789abcdef"
+        private val PRESET_FILE = Regex("[0-9a-f]{64}\\.txt")
+    }
 }
+
+data class LauncherPreset(val name: String, val choice: HomeChoice)
+enum class LauncherPresetSaveResult { SAVED, INVALID_NAME, INVALID_LAYOUT, DUPLICATE_NAME, LIMIT_REACHED }
 
 // App settings (M8) that are preferences, not records: haptics and large text.
 data class AppPrefsValue(

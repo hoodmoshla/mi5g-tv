@@ -2,6 +2,7 @@ package tv.cleanyour.feature.launcher
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -30,8 +31,10 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import tv.cleanyour.core.flows.AppChoice
 import tv.cleanyour.core.flows.HomeBlock
+import tv.cleanyour.core.flows.HomeChoice
 import tv.cleanyour.core.flows.HomeScreenState
 import tv.cleanyour.core.flows.NotOnTv
+import tv.cleanyour.core.flows.LauncherPreset
 import tv.cleanyour.core.flows.ThemeOption
 import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.testing.fixtures.Samples
@@ -121,6 +124,14 @@ class ArabicReleaseScreenshotsTest {
         record("03_home_hidden_apps_ar.png", 1000.dp) {
             SheetOver({ HomeScreen(installedState.copy(hiddenApps = hidden), {}, {}) }) {
                 HiddenAppsContent(dock, hidden.toSet(), onToggle = { _, _ -> }, onDone = {})
+            }
+        }
+        record("04_home_presets_ar.png", 920.dp) {
+            Column {
+                PresetsContent(
+                    installedState.copy(presets = listOf(LauncherPreset("العائلة", HomeChoice(dock.map { it.pkg }, "aurora", false)))),
+                    {},
+                )
             }
         }
     }

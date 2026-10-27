@@ -32,6 +32,27 @@
     <string name="home_hidden_apps_body">Turn a switch on to hide an app shortcut and off to show it. This does not disable or uninstall the app.</string>
     <string name="home_hidden_apps_reset">Use look defaults</string>
     <string name="home_hidden_apps_empty">There are no launchable apps to manage.</string>
+    <string name="home_presets_open">Saved layouts (%1$d)</string>
+    <string name="home_presets_title">Saved launcher layouts</string>
+    <string name="home_presets_note">Layouts are saved on this phone for this TV. Apply sends the saved dock, look and card setting; existing hidden-app choices stay as they are.</string>
+    <string name="home_presets_empty">No saved layouts yet.</string>
+    <string name="home_preset_name">Layout name</string>
+    <string name="home_preset_save">Save current layout</string>
+    <string name="home_preset_saved">Saved on this phone for this TV.</string>
+    <string name="home_preset_applied">Layout applied to the TV.</string>
+    <string name="home_preset_deleted">Saved layout deleted.</string>
+    <string name="home_preset_invalid_name">Use a name of 1–32 characters without line breaks.</string>
+    <string name="home_preset_invalid_layout">This layout is too large to save.</string>
+    <string name="home_preset_duplicate">A layout with that name already exists.</string>
+    <string name="home_preset_limit">You can save up to 12 layouts for each TV. Delete one to make room.</string>
+    <string name="home_preset_not_found">That saved layout no longer exists. Refresh and try again.</string>
+    <string name="home_preset_failed">The layout operation could not be completed.</string>
+    <plurals name="home_preset_summary">
+        <item quantity="one">%1$d app • %2$s</item>
+        <item quantity="other">%1$d apps • %2$s</item>
+    </plurals>
+    <string name="home_preset_apply">Apply to this TV</string>
+    <string name="home_preset_delete">Delete saved layout</string>
     <string name="home_row_stock">Use the TV\'s own home screen</string>
     <string name="home_row_stock_note">Brings back the TV\'s own home screen. Ours stays installed, so you can switch again.</string>
     <string name="home_drift_banner">The home screen settings on the TV changed since you set them.</string>

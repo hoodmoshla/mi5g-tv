@@ -5,6 +5,7 @@ package tv.cleanyour.feature.launcher
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
@@ -23,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import tv.cleanyour.core.flows.AppChoice
@@ -30,6 +32,8 @@ import tv.cleanyour.core.flows.Busy
 import tv.cleanyour.core.flows.HomeScreenIntent
 import tv.cleanyour.core.flows.HomeScreenState
 import tv.cleanyour.core.flows.HomeBlock
+import tv.cleanyour.core.flows.HomePresetFeedback
+import tv.cleanyour.core.flows.HomePrefs
 import tv.cleanyour.core.flows.NotOnTv
 import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.core.planner.Plan
@@ -38,6 +42,7 @@ import tv.cleanyour.ui.design.component.Banner
 import tv.cleanyour.ui.design.component.BannerTone
 import tv.cleanyour.ui.design.component.CheckLine
 import tv.cleanyour.ui.design.component.CheckState
+import tv.cleanyour.ui.design.component.CytTextField
 import tv.cleanyour.ui.design.component.CytBottomSheet
 import tv.cleanyour.ui.design.component.CytTopBar
 import tv.cleanyour.ui.design.component.DockApp
@@ -70,6 +75,7 @@ fun HomeScreen(state: HomeScreenState, onIntent: (HomeScreenIntent) -> Unit, onB
     var dockOpen by rememberSaveable { mutableStateOf(false) }
     var lookOpen by rememberSaveable { mutableStateOf(false) }
     var hiddenAppsOpen by rememberSaveable { mutableStateOf(false) }
+    var presetsOpen by rememberSaveable { mutableStateOf(false) }
     val busy = state.busy
     ScreenScaffold(Glow.Tv, modifier, topBar = { CytTopBar(onBack = onBack) }) {
         ScreenTitle(stringResource(R.string.home_title), Modifier.padding(top = 20.dp))
@@ -119,8 +125,9 @@ fun HomeScreen(state: HomeScreenState, onIntent: (HomeScreenIntent) -> Unit, onB
     if (hiddenAppsOpen) HiddenAppsSheet(state.apps, state.hiddenApps,
         onDone = { onIntent(HomeScreenIntent.SetHiddenApps(it)); hiddenAppsOpen = false }, onDismiss = { hiddenAppsOpen = false })
     if (lookOpen) CytBottomSheet({ lookOpen = false }) {
-        LookContent(state) { onIntent(HomeScreenIntent.SetTheme(it)); lookOpen = false }
+        LookContent(state, onSelect = { onIntent(HomeScreenIntent.SetTheme(it)); lookOpen = false }, onOpenPresets = { lookOpen = false; presetsOpen = true })
     }
+    if (presetsOpen) CytBottomSheet({ presetsOpen = false }) { PresetsContent(state, onIntent) }
     state.stockPreview?.let { plan ->
         CytBottomSheet({ onIntent(HomeScreenIntent.CancelPreview) }) { StockPreviewContent(plan, onIntent) }
     }
@@ -208,12 +215,79 @@ private val themeDescriptions = mapOf(
 
 // A tap here applies the look to the TV, so the rows are guarded like a primary (R4-W8).
 @Composable
-internal fun ColumnScope.LookContent(state: HomeScreenState, onSelect: (String) -> Unit) {
-    SheetHeader(stringResource(R.string.theme_title))
-    val options = state.themes.map { t ->
-        ThemeOption(t.id, t.name, themeDescriptions[t.id]?.let { stringResource(it) } ?: t.description, themeSwatch(t.id))
+internal fun ColumnScope.LookContent(state: HomeScreenState, onOpenPresets: (() -> Unit)? = null, onSelect: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().heightIn(max = 600.dp).verticalScroll(rememberScrollState())) {
+        SheetHeader(stringResource(R.string.theme_title))
+        val options = state.themes.map { t ->
+            ThemeOption(t.id, t.name, themeDescriptions[t.id]?.let { stringResource(it) } ?: t.description, themeSwatch(t.id))
+        }
+        ThemePicker(options, state.themeId ?: "default", { onSelect(it.id) }, Modifier.padding(top = 16.dp), guardObscured = true)
+        onOpenPresets?.let { open ->
+            TertiaryButton(stringResource(R.string.home_presets_open, state.presets.size), open, Modifier.padding(top = 12.dp))
+        }
     }
-    ThemePicker(options, state.themeId ?: "default", { onSelect(it.id) }, Modifier.padding(top = 16.dp), guardObscured = true)
+}
+
+@Composable
+internal fun ColumnScope.PresetsContent(state: HomeScreenState, onIntent: (HomeScreenIntent) -> Unit) {
+    var name by rememberSaveable { mutableStateOf("") }
+    Column(Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState())) {
+        SheetHeader(stringResource(R.string.home_presets_title))
+        Body(stringResource(R.string.home_presets_note), Modifier.padding(top = 8.dp))
+        CytTextField(name, { name = it.take(HomePrefs.MAX_PRESET_NAME_CHARS) }, stringResource(R.string.home_preset_name), Modifier.padding(top = 12.dp))
+        PrimaryButton(
+            stringResource(R.string.home_preset_save),
+            { onIntent(HomeScreenIntent.SavePreset(name)) },
+            Modifier.padding(top = 8.dp),
+            enabled = name.isNotBlank() && state.busy == null,
+            guardObscured = false,
+        )
+        state.presetFeedback?.let { feedback ->
+            val resource = when (feedback) {
+                HomePresetFeedback.SAVED -> R.string.home_preset_saved
+                HomePresetFeedback.APPLIED -> R.string.home_preset_applied
+                HomePresetFeedback.DELETED -> R.string.home_preset_deleted
+                HomePresetFeedback.INVALID_NAME -> R.string.home_preset_invalid_name
+                HomePresetFeedback.INVALID_LAYOUT -> R.string.home_preset_invalid_layout
+                HomePresetFeedback.DUPLICATE_NAME -> R.string.home_preset_duplicate
+                HomePresetFeedback.LIMIT_REACHED -> R.string.home_preset_limit
+                HomePresetFeedback.NOT_FOUND -> R.string.home_preset_not_found
+                HomePresetFeedback.FAILED -> R.string.home_preset_failed
+            }
+            Body(stringResource(resource), Modifier.padding(top = 8.dp))
+        }
+        val busy = state.busy
+        if (busy != null) {
+            LiveLine(stringResource(R.string.home_applying))
+            if (busy is Busy.Working) ProgressBar(busy.percent / 100f, Modifier.padding(top = 12.dp))
+        }
+        if (state.presets.isEmpty()) {
+            Body(stringResource(R.string.home_presets_empty), Modifier.padding(top = 16.dp))
+        } else {
+            state.presets.forEach { preset ->
+                val themeName = preset.choice.themeId?.let { id -> state.themes.firstOrNull { it.id == id }?.name }
+                    ?: stringResource(R.string.theme_default)
+                ListGroup(Modifier.padding(top = 12.dp)) {
+                    ListRow(preset.name, subtitle = pluralStringResource(R.plurals.home_preset_summary, preset.choice.dock.size, preset.choice.dock.size, themeName), chevron = false)
+                    PrimaryButton(
+                        stringResource(R.string.home_preset_apply),
+                        { onIntent(HomeScreenIntent.ApplyPreset(preset.name)) },
+                        Modifier.padding(horizontal = 16.dp),
+                        enabled = busy == null,
+                        guardObscured = true,
+                    )
+                    TertiaryButton(
+                        stringResource(R.string.home_preset_delete),
+                        { onIntent(HomeScreenIntent.DeletePreset(preset.name)) },
+                        Modifier.padding(horizontal = 16.dp),
+                        enabled = busy == null,
+                        quiet = true,
+                        guardObscured = true,
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
