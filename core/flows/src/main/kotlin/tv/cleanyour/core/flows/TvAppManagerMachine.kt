@@ -323,20 +323,19 @@ class TvAppManagerMachine(
             send(ActionUpdate(TvAppActionStatus.Failed(pkg, name, TvAppActionKind.RESTRICT_BG)))
             return
         }
-        var ok = false
         for (l in lines) {
             val r = attempt { TvShellRunner.run(session, l) }.getOrNull()
-            if (r != null && r.exit == 0) ok = true
+            if (r == null || r.exit != 0 || r.truncated) {
+                // Earlier AppOps writes may remain; do not apply more settings or force-stop after a partial failure.
+                send(ActionUpdate(TvAppActionStatus.Failed(pkg, name, TvAppActionKind.RESTRICT_BG)))
+                return
+            }
         }
         runCatching { ShellRenderer.forceStopLine(pkg) }.getOrNull()?.let { fs ->
             attempt { TvShellRunner.run(session, fs) }
         }
-        if (ok) {
-            send(ActionUpdate(TvAppActionStatus.Done(pkg, name, TvAppActionKind.RESTRICT_BG)))
-            effect(ManageEffect.HapticDouble)
-        } else {
-            send(ActionUpdate(TvAppActionStatus.Failed(pkg, name, TvAppActionKind.RESTRICT_BG)))
-        }
+        send(ActionUpdate(TvAppActionStatus.Done(pkg, name, TvAppActionKind.RESTRICT_BG)))
+        effect(ManageEffect.HapticDouble)
     }
 
     private suspend fun disableApp(pkg: PackageName) {

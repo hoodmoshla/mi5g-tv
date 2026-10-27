@@ -289,6 +289,7 @@
     <string name="tvapps_done_uninstall">تم إلغاء تثبيت {name} من التلفاز.</string>
     <string name="tvapps_done_pull_apk">تم سحب وحفظ نسخة APK لتطبيق {name} في الهاتف.</string>
     <string name="tvapps_failed_action">تعذّر تنفيذ الإجراء لتطبيق {name}.</string>
+    <string name="tvapps_failed_restrict_bg">تعذّر تطبيق كل قيود الخلفية على {name}. قد تكون إعدادات سابقة قد تغيّرت؛ تحقّق من التلفاز قبل إعادة المحاولة.</string>
     <!-- v1.5.0: TV App Manager 7 actions, Downloader codes, Button Mapper, Force Landscape, TV Banner, GitHub Update -->
     <string name="appsettings_download_github">التحقق وتنزيل أحدث إصدار للتطبيق (GitHub)</string>
     <string name="appsettings_download_github_note">تنزيل أحدث ملف APK مباشرة من صفحة الإصدارات الرسمية</string>
@@ -299,7 +300,7 @@
     <string name="tvapps_working_restrict_bg">جارٍ منع العمل بالخلفية لتطبيق {name}...</string>
     <string name="tvapps_working_disable">جارٍ تجميد وتعطيل {name}...</string>
     <string name="tvapps_working_enable">جارٍ تفعيل واستعادة {name}...</string>
-    <string name="tvapps_done_restrict_bg">تم منع {name} من العمل في الخلفية واستهلاك الرام.</string>
+    <string name="tvapps_done_restrict_bg">طُبّقت قيود العمل في الخلفية على {name}.</string>
     <string name="tvapps_done_disable">تم تجميد وتعطيل {name} بنجاح.</string>
     <string name="tvapps_done_enable">تم تفعيل واستعادة {name} بنجاح.</string>
     <string name="tvtools_cards_section">فتح بطاقات Mi5G TV مباشرة على التلفاز (لدونجل Xiaomi Stick وكل الشاشات)</string>
@@ -333,4 +334,3 @@
     <string name="tvtools_power_done">تم التنفيذ بنجاح: {name}.</string>
     <string name="tvtools_power_failed">تعذّر التنفيذ على التلفاز: {name}.</string>
 </resources>
-
