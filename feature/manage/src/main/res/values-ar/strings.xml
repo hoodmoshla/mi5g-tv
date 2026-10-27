@@ -425,4 +425,5 @@
     <string name="tvtools_power_working">جارٍ التنفيذ على التلفاز: {name}...</string>
     <string name="tvtools_power_done">تم التنفيذ بنجاح: {name}.</string>
     <string name="tvtools_power_failed">تعذّر التنفيذ على التلفاز: {name}.</string>
+    <string name="tvtools_power_partial">تعذّر إكمال التنفيذ على التلفاز: {name}. قد تكون بعض الخطوات قد طُبّقت؛ تحقّق من التلفاز قبل إعادة المحاولة.</string>
 </resources>

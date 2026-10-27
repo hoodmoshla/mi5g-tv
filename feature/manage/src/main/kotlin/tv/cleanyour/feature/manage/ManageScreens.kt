@@ -803,6 +803,7 @@ fun TvToolsScreen(state: TvToolsState, onIntent: (TvToolsIntent) -> Unit, onBack
             is PowerToolStatus.Working -> LiveLine(msg(R.string.tvtools_power_working, "name" to ps.label))
             is PowerToolStatus.Done -> CheckLine(msg(R.string.tvtools_power_done, "name" to ps.label), Modifier.padding(top = 8.dp, start = 4.dp))
             is PowerToolStatus.Failed -> Body(msg(R.string.tvtools_power_failed, "name" to ps.label), Modifier.padding(top = 8.dp, start = 4.dp), color = CytTheme.colors.danger)
+            is PowerToolStatus.PartialFailure -> Body(msg(R.string.tvtools_power_partial, "name" to ps.label), Modifier.padding(top = 8.dp, start = 4.dp), color = CytTheme.colors.danger)
             PowerToolStatus.Idle -> {}
         }
 

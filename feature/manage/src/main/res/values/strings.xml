@@ -432,4 +432,5 @@
     <string name="tvtools_power_working">Running on TV: {name}...</string>
     <string name="tvtools_power_done">Completed on TV: {name}.</string>
     <string name="tvtools_power_failed">Could not run on TV: {name}.</string>
+    <string name="tvtools_power_partial">Could not finish on TV: {name}. Some steps may already have taken effect; check the TV before retrying.</string>
 </resources>
