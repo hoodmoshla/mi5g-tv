@@ -13,6 +13,7 @@ import tv.cleanyour.core.model.PACKAGE_RE
 import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.core.model.RemoteDir
 import tv.cleanyour.core.model.RemotePath
+import tv.cleanyour.core.model.ShellLine
 import tv.cleanyour.core.model.TvAnimationScale
 import tv.cleanyour.core.model.TvId
 import tv.cleanyour.core.model.TvKeyEvent
@@ -123,6 +124,7 @@ sealed interface PowerToolStatus {
     data class Working(val label: String) : PowerToolStatus
     data class Done(val label: String) : PowerToolStatus
     data class Failed(val label: String) : PowerToolStatus
+    data class PartialFailure(val label: String) : PowerToolStatus
 }
 
 data class TvToolsState(
@@ -507,23 +509,48 @@ class TvToolsMachine(
         }
         val blob = d.blobs.putBytes(encoded)
         try {
-            val ops = d.configTransport.writePlanSteps(blob, null)
-            for (op in ops) {
+            val steps = runCatching { d.configTransport.writePlanSteps(blob, null) }.getOrNull()
+            if (steps == null || steps.isEmpty()) {
+                send(PowerToolUpdate(PowerToolStatus.Failed(label)))
+                return
+            }
+            suspend fun shellStepSucceeded(line: ShellLine): Boolean {
+                val result = attempt { TvShellRunner.run(session, line) }.getOrNull()
+                return result != null && result.exit == 0 && !result.truncated
+            }
+            var earlierStepApplied = false
+            for (op in steps) {
                 when (op) {
-                    is Op.PushAsset -> attempt { session.push(op.src, op.dest) {} }
+                    is Op.PushAsset -> {
+                        if (attempt { session.push(op.src, op.dest) {} }.isFailure) {
+                            send(PowerToolUpdate(PowerToolStatus.PartialFailure(label)))
+                            return
+                        }
+                        earlierStepApplied = true
+                    }
                     else -> {
                         val rendered = runCatching { ShellRenderer().render(op) }.getOrNull()
-                        if (rendered != null) {
-                            for (line in rendered.lines) {
-                                attempt { TvShellRunner.run(session, line) }
+                        if (rendered == null || rendered.lines.isEmpty()) {
+                            val status = if (earlierStepApplied) PowerToolStatus.PartialFailure(label) else PowerToolStatus.Failed(label)
+                            send(PowerToolUpdate(status))
+                            return
+                        }
+                        for (line in rendered.lines) {
+                            if (!shellStepSucceeded(line)) {
+                                send(PowerToolUpdate(PowerToolStatus.PartialFailure(label)))
+                                return
                             }
+                            earlierStepApplied = true
                         }
                     }
                 }
             }
             if (keyCode == 176) {
-                for (l in ShellRenderer.quickSettingsOverlayLines()) {
-                    attempt { TvShellRunner.run(session, l) }
+                for (line in ShellRenderer.quickSettingsOverlayLines()) {
+                    if (!shellStepSucceeded(line)) {
+                        send(PowerToolUpdate(PowerToolStatus.PartialFailure(label)))
+                        return
+                    }
                 }
             }
             send(PowerToolUpdate(PowerToolStatus.Done(label)))

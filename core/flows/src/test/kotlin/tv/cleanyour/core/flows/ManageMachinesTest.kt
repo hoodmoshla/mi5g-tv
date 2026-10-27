@@ -29,6 +29,7 @@ import tv.cleanyour.core.model.PermissionStatement
 import tv.cleanyour.core.model.PlanId
 import tv.cleanyour.core.model.Tier
 import tv.cleanyour.core.model.Tv
+import tv.cleanyour.core.session.ExecResult
 import tv.cleanyour.core.model.TvAnimationScale
 import tv.cleanyour.core.model.TvKeyEvent
 import tv.cleanyour.testing.fixtures.FakeTvSession
@@ -958,6 +959,55 @@ class ManageMachinesTest {
         settle()
         assertEquals(SideloadStatus.Installed("shahid-tv.apk"), tools.state.value.sideloadStatus)
         assertTrue(h.session.calls.any { it is FakeTvSession.Call.InstallStream })
+    }
+
+    @Test fun mapRemoteKeyStopsAtFailureWarnsAboutPartialChangesAndAllowsRetry() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val tv = h.knownTv()
+        val tools = TvToolsMachine(h.manageDeps(), backgroundScope, tv.id)
+        settle()
+        val callsBefore = h.session.execLines.size
+        var callsAfterFailure = callsBefore
+
+        tools.effects.test {
+            h.session.failNext = AdbError.Transport.Closed
+            tools.dispatch(TvToolsIntent.MapRemoteKey(23, "com.netflix.ninja", "Map Netflix key"))
+            settle()
+            assertEquals(PowerToolStatus.PartialFailure("Map Netflix key"), tools.state.value.powerToolStatus)
+            assertEquals(1, h.session.execLines.size - callsBefore, "stop after the first failed deployment command")
+            assertFalse(drain().contains(ManageEffect.HapticDouble))
+            callsAfterFailure = h.session.execLines.size
+        }
+
+        h.session.recording.fallback = { ExecResult(0, "", "", false, 1) }
+        tools.effects.test {
+            tools.dispatch(TvToolsIntent.MapRemoteKey(23, "com.netflix.ninja", "Map Netflix key"))
+            settle()
+            assertEquals(PowerToolStatus.Done("Map Netflix key"), tools.state.value.powerToolStatus)
+            assertTrue(h.session.execLines.size > callsAfterFailure)
+            assertEquals(ManageEffect.HapticDouble, awaitItem())
+        }
+    }
+
+    @Test fun mapRemoteKeyStopsOnNonzeroAndTruncatedShellResults() = runTest(timeout = 30.seconds) {
+        val outcomes = listOf(
+            ExecResult(exit = 1, stdout = "", stderr = "permission denied", truncated = false, millis = 1),
+            ExecResult(exit = 0, stdout = "partial output", stderr = "", truncated = true, millis = 1),
+        )
+        for (outcome in outcomes) {
+            val h = Harness()
+            val tv = h.knownTv()
+            h.session.recording.on(Regex("mkdir -p .*")) { outcome }
+            val tools = TvToolsMachine(h.manageDeps(), backgroundScope, tv.id)
+            settle()
+            val callsBefore = h.session.execLines.size
+
+            tools.dispatch(TvToolsIntent.MapRemoteKey(23, "com.netflix.ninja", "Map Netflix key"))
+            settle()
+
+            assertEquals(PowerToolStatus.PartialFailure("Map Netflix key"), tools.state.value.powerToolStatus)
+            assertEquals(1, h.session.execLines.size - callsBefore, "stop after a failed or incomplete shell result")
+        }
     }
 
     @Test fun installHomeScreenFromNotOnTvInstallsAndActivatesTheLauncher() = runTest(timeout = 30.seconds) {
