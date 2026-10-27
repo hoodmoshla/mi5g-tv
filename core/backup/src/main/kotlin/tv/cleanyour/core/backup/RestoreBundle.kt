@@ -157,10 +157,17 @@ object RestoreBundleReader {
     fun read(input: InputStream): ReadBundle {
         val files = LinkedHashMap<String, ByteArray>()
         var total = 0L
+        var launcherDirectorySeen = false
         ZipInputStream(input).use { zin ->
             while (true) {
                 val e = zin.nextEntry ?: break
-                if (e.isDirectory) { if (e.name == "launcher/") continue else fail("unexpected folder ${e.name}") }
+                if (e.isDirectory) {
+                    if (e.name != "launcher/") fail("unexpected folder ${e.name.take(80)}")
+                    if (launcherDirectorySeen) fail("launcher/ appears twice")
+                    launcherDirectorySeen = true
+                    if (zin.read() != -1) fail("launcher/ directory must be empty")
+                    continue
+                }
                 if (e.name !in RestoreBundle.ENTRIES) fail("unexpected entry ${e.name.take(80)}")
                 if (e.name in files) fail("entry ${e.name} appears twice")
                 val bytes = readCapped(zin, RestoreBundle.MAX_ENTRY_BYTES) ?: fail("entry ${e.name} is too large")

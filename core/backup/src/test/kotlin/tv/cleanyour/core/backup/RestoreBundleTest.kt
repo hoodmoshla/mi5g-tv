@@ -137,6 +137,15 @@ class RestoreBundleTest {
         assertTrue(e.message!!.contains("too large"), e.message)
     }
 
+    @Test fun aLauncherDirectoryEntryWithPayloadIsRefused() {
+        val good = entries(zip()).toList()
+        val bomb = good + ("launcher/" to ByteArray((RestoreBundle.MAX_ENTRY_BYTES + 1).toInt()))
+        val e = assertFailsWith<RestoreBundleException> {
+            RestoreBundleReader.read(ByteArrayInputStream(rezip(bomb)))
+        }
+        assertTrue(e.message!!.contains("directory"), e.message)
+    }
+
     @Test fun noSerialOrNetworkDataInAnyFile() {
         val serial = Fixtures.miTv().serial
         val ip = (tv.endpoints.first()).host
