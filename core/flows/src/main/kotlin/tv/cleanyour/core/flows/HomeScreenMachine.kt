@@ -55,7 +55,11 @@ data class HomeScreenState(
     val updatePreview: Plan? = null,
     val tvSideSettings: Boolean = false,                // the TV's launcher has Launcher settings of its own (2.4, versionCode 5, and later)
     val notOnTv: NotOnTv? = null,                       // 0.3.3 D2: the new home screen is not on this TV; no dock or look rows
+    val presets: List<LauncherPreset> = emptyList(),
+    val presetFeedback: HomePresetFeedback? = null,
 )
+
+enum class HomePresetFeedback { SAVED, APPLIED, DELETED, INVALID_NAME, INVALID_LAYOUT, DUPLICATE_NAME, LIMIT_REACHED, NOT_FOUND, FAILED }
 
 sealed interface HomeScreenIntent {
     data class SetDock(val dock: List<PackageName>) : HomeScreenIntent
@@ -69,6 +73,9 @@ sealed interface HomeScreenIntent {
     data object RunSetupAgain : HomeScreenIntent       // 0.3.3 D2, NotOnTv.setupAgain
     data object HelpAddTv : HomeScreenIntent           // 0.3.3 D2, NotOnTv.helpAddTv
     data object InstallHomeScreen : HomeScreenIntent   // v1.1.1: direct install and activate
+    data class SavePreset(val name: String) : HomeScreenIntent
+    data class ApplyPreset(val name: String) : HomeScreenIntent
+    data class DeletePreset(val name: String) : HomeScreenIntent
 }
 
 class HomeScreenMachine(
@@ -83,13 +90,15 @@ class HomeScreenMachine(
     private data class Preview(val plan: Plan?)
     private data class Drift(val drift: Boolean)
     private data class UpdatePreview(val plan: Plan?)
+    private data class PresetsChanged(val presets: List<LauncherPreset>, val feedback: HomePresetFeedback?)
     private var updated = false   // D4: this screen updated the launcher; the stored snapshot does not know yet
 
     init { scope.launch { load(); checkDrift() } }
 
     override fun reduce(state: HomeScreenState, event: Any): HomeScreenState = when (event) {
-        is Loaded -> event.s.copy(busy = state.busy, stockPreview = state.stockPreview, drift = state.drift, updatePreview = state.updatePreview)
+        is Loaded -> event.s.copy(busy = state.busy, stockPreview = state.stockPreview, drift = state.drift, updatePreview = state.updatePreview, presetFeedback = state.presetFeedback)
         is UpdatePreview -> state.copy(updatePreview = event.plan)
+        is PresetsChanged -> state.copy(presets = event.presets, presetFeedback = event.feedback)
         is BusyNow -> state.copy(busy = event.busy)
         is Preview -> state.copy(stockPreview = event.plan)
         is Drift -> state.copy(drift = event.drift)
@@ -100,7 +109,7 @@ class HomeScreenMachine(
     override fun handle(event: Any, before: HomeScreenState, after: HomeScreenState) {
         if (before.busy != null && event is HomeScreenIntent) return
         // 0.3.3 D2: nothing to send the dock or the look to.
-        if (after.notOnTv != null && (event is HomeScreenIntent.SetDock || event is HomeScreenIntent.SetTheme || event == HomeScreenIntent.RestoreMine)) return
+        if (after.notOnTv != null && (event is HomeScreenIntent.SetDock || event is HomeScreenIntent.SetTheme || event == HomeScreenIntent.RestoreMine || event is HomeScreenIntent.ApplyPreset)) return
         when (event) {
             is HomeScreenIntent.SetDock -> scope.launch { apply(event.dock, after.themeId) }
             // RF-LAUNCHER-250 F4: a new look and "Restore mine" push the dock as it was saved, as
@@ -109,6 +118,9 @@ class HomeScreenMachine(
             // upstream #340). Only SetDock changes the list.
             is HomeScreenIntent.SetTheme -> scope.launch { apply(savedDock() ?: after.dock.map { it.pkg }, event.id) }
             HomeScreenIntent.RestoreMine -> scope.launch { apply(savedDock() ?: after.dock.map { it.pkg }, after.themeId) }
+            is HomeScreenIntent.SavePreset -> scope.launch { savePreset(event.name, after) }
+            is HomeScreenIntent.ApplyPreset -> scope.launch { applyPreset(event.name, after) }
+            is HomeScreenIntent.DeletePreset -> scope.launch { deletePreset(event.name, after) }
             HomeScreenIntent.PreviewStock -> after.stock?.let { stock -> scope.launch { send(Preview(writer.preview(tvId, PlanRequest.UseStockHome(stock)))) } }
             HomeScreenIntent.UseStock -> after.stock?.let { stock -> scope.launch { useStock(stock) } }
             HomeScreenIntent.PreviewUpdate -> scope.launch { previewUpdate() }
@@ -126,6 +138,7 @@ class HomeScreenMachine(
         val snap = d.snapshots.latest(tvId)
         val packages = snap?.packages.orEmpty()
         val choice = d.homePrefs.load(tvId)
+        val presets = attempt { d.homePrefs.presets(tvId) }.getOrNull().orEmpty()
         // The stored snapshot cannot say which apps are launchable, so the rule without that
         // answer applies: never a home screen, a provider or a system-only package.
         val apps = (snap?.let { DockCandidates.of(it, null, profile, d.facts) } ?: emptySet())
@@ -138,7 +151,7 @@ class HomeScreenMachine(
         send(Loaded(HomeScreenState(tv.nickname, dock, apps, choice?.themeId, state.value.themes, stock = profile?.stockLaunchers?.firstOrNull(),
             homeScreenOurs = tv.launcher != null, columns = columns, updateTo = updateTo(tv, packages),
             tvSideSettings = (packages[Launcher.pkg]?.versionCode ?: 0) >= FIRST_WITH_TV_SETTINGS,
-            notOnTv = notOnTv(tv, snap))))
+            notOnTv = notOnTv(tv, snap), presets = presets)))
     }
 
     // 0.3.3 D2: null while the new home screen is on the TV: Setup recorded it (tv.launcher), or the
@@ -229,33 +242,74 @@ class HomeScreenMachine(
 
     private suspend fun savedDock(): List<PackageName>? = d.homePrefs.load(tvId)?.dock
 
+    private suspend fun savePreset(name: String, current: HomeScreenState) {
+        val active = attempt { d.homePrefs.load(tvId) }.getOrNull()
+        val choice = HomeChoice(active?.dock ?: current.dock.map { it.pkg }, current.themeId, active?.cards)
+        val result = attempt { d.homePrefs.savePreset(tvId, name, choice) }
+        val feedback = result.fold(
+            onSuccess = { saved -> when (saved) {
+                LauncherPresetSaveResult.SAVED -> HomePresetFeedback.SAVED
+                LauncherPresetSaveResult.INVALID_NAME -> HomePresetFeedback.INVALID_NAME
+                LauncherPresetSaveResult.INVALID_LAYOUT -> HomePresetFeedback.INVALID_LAYOUT
+                LauncherPresetSaveResult.DUPLICATE_NAME -> HomePresetFeedback.DUPLICATE_NAME
+                LauncherPresetSaveResult.LIMIT_REACHED -> HomePresetFeedback.LIMIT_REACHED
+            } },
+            onFailure = { HomePresetFeedback.FAILED },
+        )
+        val presets = attempt { d.homePrefs.presets(tvId) }.getOrNull() ?: current.presets
+        send(PresetsChanged(presets, feedback))
+    }
+
+    private suspend fun applyPreset(name: String, current: HomeScreenState) {
+        val preset = current.presets.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        if (preset == null) {
+            send(PresetsChanged(current.presets, HomePresetFeedback.NOT_FOUND))
+            return
+        }
+        val applied = apply(preset.choice.dock, preset.choice.themeId, preset.choice.cards)
+        val presets = attempt { d.homePrefs.presets(tvId) }.getOrNull() ?: current.presets
+        send(PresetsChanged(presets, if (applied) HomePresetFeedback.APPLIED else HomePresetFeedback.FAILED))
+    }
+
+    private suspend fun deletePreset(name: String, current: HomeScreenState) {
+        val deleted = attempt { d.homePrefs.deletePreset(tvId, name) }.getOrNull()
+        val presets = attempt { d.homePrefs.presets(tvId) }.getOrNull() ?: current.presets
+        val feedback = when (deleted) {
+            true -> HomePresetFeedback.DELETED
+            false -> HomePresetFeedback.NOT_FOUND
+            null -> HomePresetFeedback.FAILED
+        }
+        send(PresetsChanged(presets, feedback))
+    }
+
     // Dock and look go to the TV as one config.json (LauncherConfigCodec), pushed by an ApplyTheme
     // plan; the digest we wrote is remembered so the next connect can warn on drift. dock_apps is
     // the dock and the rows under it in order, rows_below_dock the rows under the dock that hold an
     // app (DockLayers), so the TV shows the rows the sheet showed. module_cards keeps this TV's cards
     // choice (RFC-CARDS-1): a new dock or theme never turns cards on or off.
-    private suspend fun apply(dock: List<PackageName>, themeId: String?) {
-        val cards = Cards.current(d, tvId, d.homePrefs.load(tvId))
+    private suspend fun apply(dock: List<PackageName>, themeId: String?, cardsOverride: Boolean? = null): Boolean {
+        val cards = cardsOverride ?: Cards.current(d, tvId, d.homePrefs.load(tvId))
         val look = attempt { Look.encode(d.encoder, d.blobs, theme(themeId), dock, cards) }.getOrNull()
-            ?: return effect(ManageEffect.Snackbar(SnackKind.FAILED, "", false))
+            ?: run { effect(ManageEffect.Snackbar(SnackKind.FAILED, "", false)); return false }
         val kept = look.doc.dockApps.orEmpty()
         val r = writer.write(tvId, PlanRequest.ApplyTheme(look.doc, look.config, look.wallpaper)) { send(BusyNow(it)) }
         send(BusyNow(null))
-        if (r is WriteResult.Done) {
+        if (r is WriteResult.Done && r.finished.status == RunStatus.COMPLETED) {
             d.homePrefs.save(tvId, HomeChoice(kept, themeId, cards))
             rememberPushedLook(d, tvId, look.digest)
             send(Drift(false))
             effect(ManageEffect.Snackbar(SnackKind.HOME_SAVED, "", false))
             load()
-            return
+            return true
         }
         load()
         // 0.3.3 D2: the TV said the new home screen is gone (removed since the snapshot this screen
         // read): the reload shows why there is nothing to send, which says more than "We stopped".
-        if (r is WriteResult.Refused && state.value.notOnTv != null) return
+        if (r is WriteResult.Refused && state.value.notOnTv != null) return false
         if (r !is WriteResult.GateCancelled && r !is WriteResult.NoTv && r !is WriteResult.Paused) {   // Paused: the open-run card (O2)
             effect(ManageEffect.Snackbar(SnackKind.FAILED, "", false))
         }
+        return false
     }
 
     // "Use the TV's own home screen": re-enables the stock launcher, sets it as home, keeps ours

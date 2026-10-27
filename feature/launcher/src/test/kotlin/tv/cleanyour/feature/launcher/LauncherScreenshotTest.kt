@@ -14,9 +14,11 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import tv.cleanyour.core.flows.AppChoice
 import tv.cleanyour.core.flows.Busy
+import tv.cleanyour.core.flows.HomeChoice
 import tv.cleanyour.core.flows.HomeBlock
 import tv.cleanyour.core.flows.NotOnTv
 import tv.cleanyour.core.flows.HomeScreenState
+import tv.cleanyour.core.flows.LauncherPreset
 import tv.cleanyour.core.flows.ThemeOption
 import tv.cleanyour.core.model.Op
 import tv.cleanyour.core.model.PackageName
@@ -97,6 +99,9 @@ object LauncherShots {
 
         // Look (theme picker), the dock sheet (S3b on Manage) and the stock home screen preview
         Shot("home_look_sheet") { SheetOver({ HomeScreen(home(), {}, {}) }) { LookContent(home(themeId = "aurora")) {} } },
+        Shot("home_presets_sheet", 1200.dp) { SheetOver({ HomeScreen(home(), {}, {}) }) {
+            PresetsContent(home().copy(presets = listOf(LauncherPreset("Family room", HomeChoice(defaultDock.map { it.pkg }, "aurora", cards = false)))), {})
+        } },
         Shot("home_dock_sheet", 1000.dp) { SheetOver({ HomeScreen(home(), {}, {}) }) { DockContent(dockState(defaultDock.take(3)), apps, {}) } },
         Shot("home_dock_sheet_full", 1000.dp) { SheetOver({ HomeScreen(home(), {}, {}) }) { DockContent(dockState(defaultDock), apps, {}) } },
         Shot("home_dock_sheet_empty") { SheetOver({ HomeScreen(home(), {}, {}) }) { DockContent(dockState(emptyList()), apps, {}) } },
