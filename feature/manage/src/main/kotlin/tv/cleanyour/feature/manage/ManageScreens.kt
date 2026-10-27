@@ -41,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -1055,7 +1056,11 @@ fun TvToolsScreen(state: TvToolsState, onIntent: (TvToolsIntent) -> Unit, onBack
             RemoteStatus.Sending -> LiveLine(stringResource(R.string.tvtools_remote_sending))
             RemoteStatus.Sent -> CheckLine(stringResource(R.string.tvtools_remote_sent), Modifier.padding(top = 8.dp, start = 4.dp))
             RemoteStatus.Failed -> Body(stringResource(R.string.tvtools_remote_failed), Modifier.padding(top = 8.dp, start = 4.dp), color = CytTheme.colors.danger)
+            RemoteStatus.UnsupportedText -> Body(stringResource(R.string.tvtools_text_unsupported), Modifier.padding(top = 8.dp, start = 4.dp), color = CytTheme.colors.danger)
             RemoteStatus.Idle -> {}
+        }
+        if (state.textInputTooLong) {
+            Body(stringResource(R.string.tvtools_text_too_long), Modifier.padding(top = 8.dp, start = 4.dp), color = CytTheme.colors.danger)
         }
 
         SectionLabel(stringResource(R.string.tvtools_text_section))
@@ -1068,12 +1073,14 @@ fun TvToolsScreen(state: TvToolsState, onIntent: (TvToolsIntent) -> Unit, onBack
                 value = state.textInput,
                 onValueChange = { onIntent(TvToolsIntent.UpdateText(it)) },
                 label = stringResource(R.string.tvtools_text_label),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).testTag("tvtools_text_input"),
+                singleLine = false,
+                maxLines = 3,
             )
             SmallGlassButton(
                 stringResource(R.string.tvtools_text_send),
                 { onIntent(TvToolsIntent.SendText) },
-                enabled = state.textInput.isNotBlank() && !sending,
+                enabled = state.textInput.isNotBlank() && !state.textInputTooLong && !sending,
             )
         }
 

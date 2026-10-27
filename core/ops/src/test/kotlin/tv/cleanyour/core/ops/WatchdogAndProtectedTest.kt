@@ -203,13 +203,18 @@ class ProtectedTest {
         assertEquals("'input' 'text' 'Shahid%sVIP%s2026'", textLine.text)
         assertEquals(listOf("input", "text", "Shahid%sVIP%s2026"), ShellTokens.tokenize(textLine.text))
 
-        // Quotes and shell metacharacters stay inert inside single quotes or are stripped
-        val quoted = ShellRenderer.inputTextLine(" user's; rm -rf / ")
-        ShellTokens.assertLine(quoted.text)
-        assertEquals(listOf("input", "text", "%susers;%srm%s-rf%s/%s"), ShellTokens.tokenize(quoted.text))
+        // Shell metacharacters stay inert inside the quoted argv; unsupported text is rejected whole.
+        val metacharacters = ShellRenderer.inputTextLine(" user; rm -rf / ")
+        ShellTokens.assertLine(metacharacters.text)
+        assertEquals(listOf("input", "text", "%suser;%srm%s-rf%s/%s"), ShellTokens.tokenize(metacharacters.text))
 
         assertFailsWith<IllegalArgumentException> { ShellRenderer.inputTextLine("   \n\r") }
         assertFailsWith<IllegalArgumentException> { ShellRenderer.inputTextLine("'''") }
+        assertFailsWith<IllegalArgumentException> { ShellRenderer.inputTextLine("user's; rm -rf /") }
+        assertFailsWith<IllegalArgumentException> { ShellRenderer.inputTextLine("A%sB") }
+        assertFailsWith<IllegalArgumentException> { ShellRenderer.inputTextLine("مرحبا") }
+        assertFailsWith<IllegalArgumentException> { ShellRenderer.inputTextLine("Shahid مرحبا 123") }
+        assertFailsWith<IllegalArgumentException> { ShellRenderer.inputTextLine("line1\nline2") }
 
         val apkPath = tv.cleanyour.core.model.RemotePath(tv.cleanyour.core.model.RemoteDir.TMP, listOf("sideload.apk"))
         assertEquals(listOf("mkdir", "-p", "/data/local/tmp/cleanyourtv"), ShellTokens.tokenize(ShellRenderer.mkdirTmpLine().text))

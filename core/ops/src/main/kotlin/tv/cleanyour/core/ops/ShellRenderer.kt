@@ -356,16 +356,13 @@ class ShellRenderer(private val watchdogVariant: WatchdogVariant = WatchdogVaria
             ShellLine(ShellTokens.line(listOf(AM, "start", "-a", "android.settings.SETTINGS")))
 
         fun escapeInputText(raw: String): String {
-            val trimmed = raw.trim('\r', '\n')
-            require(trimmed.isNotBlank() && trimmed.length <= MAX_INPUT_TEXT_LEN) { "input text must be 1 to $MAX_INPUT_TEXT_LEN characters" }
+            require(raw.isNotBlank() && raw.length <= MAX_INPUT_TEXT_LEN) { "input text must be 1 to $MAX_INPUT_TEXT_LEN characters" }
+            require("%s" !in raw && raw.all { c -> c == ' ' || c == '\t' || (c in '!'..'~' && c != '\'') }) {
+                "input text contains unsupported characters"
+            }
             val sb = StringBuilder()
-            for (c in trimmed) {
-                when {
-                    c == ' ' || c == '\t' -> sb.append("%s")
-                    c == '\'' -> {}
-                    c in '!'..'~' -> sb.append(c)
-                    else -> {}
-                }
+            for (c in raw) {
+                if (c == ' ' || c == '\t') sb.append("%s") else sb.append(c)
             }
             val token = sb.toString()
             require(token.isNotEmpty() && ShellTokens.isSafeToken(token)) { "input text has no printable ASCII characters" }

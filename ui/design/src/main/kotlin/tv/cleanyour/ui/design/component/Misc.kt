@@ -59,11 +59,12 @@ fun CytTextField(
     supporting: String? = null,
     keyboardType: KeyboardType = KeyboardType.Text,
     singleLine: Boolean = true,
+    maxLines: Int = 1,
 ) {
     val c = CytTheme.colors
     OutlinedTextField(
         value = value, onValueChange = onValueChange, modifier = modifier.fillMaxWidth(),
-        label = { Text(label) }, isError = error != null, singleLine = singleLine,
+        label = { Text(label) }, isError = error != null, singleLine = singleLine, maxLines = maxLines,
         supportingText = (error ?: supporting)?.let { { Text(it) } },
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         shape = CytTheme.shapes.small, textStyle = CytTheme.type.bodyLarge,
@@ -109,4 +110,3 @@ fun TvCard(
         }
     }
 }
-
