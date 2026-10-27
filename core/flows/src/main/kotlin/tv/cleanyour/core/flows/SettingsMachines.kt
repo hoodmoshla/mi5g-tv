@@ -2,6 +2,8 @@ package tv.cleanyour.core.flows
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import tv.cleanyour.core.backup.AppSettingsBackupCodec
 import tv.cleanyour.core.backup.AppSettingsBackupDocument
 import tv.cleanyour.core.backup.AppSettingsBackupHistoryEntry
@@ -164,6 +166,7 @@ class AppSettingsMachine(
 ) : Machine<AppSettingsState, AppSettingsIntent, ManageEffect>(AppSettingsState(updateCheck = d.store.updateCheck, addOns = d.store.addOns), scope) {
 
     private val settingsBackup = AppSettingsBackupManager(d.appPrefs, AppSettingsBackupStore(d.documents), d.clock, d.appVersion)
+    private val appPrefsMutex = Mutex()
     private data class Loaded(val s: AppSettingsState)
     private data class Update(val u: UpdateCheck)
     private data class Working(val on: Boolean)
@@ -194,9 +197,9 @@ class AppSettingsMachine(
 
     override fun reduce(state: AppSettingsState, event: Any): AppSettingsState = when (event) {
         is Loaded -> event.s.copy(update = state.update, confirm = state.confirm)
-        is AppSettingsIntent.SetHaptics -> state.copy(prefs = state.prefs.copy(haptics = event.on))
-        is AppSettingsIntent.SetLargeText -> state.copy(prefs = state.prefs.copy(largeTextFollowsSystem = event.on))
-        is AppSettingsIntent.SetAutomaticUpdateChecks -> state.copy(prefs = state.prefs.copy(automaticUpdateChecks = event.on))
+        is AppSettingsIntent.SetHaptics -> if (state.working) state else state.copy(prefs = state.prefs.copy(haptics = event.on))
+        is AppSettingsIntent.SetLargeText -> if (state.working) state else state.copy(prefs = state.prefs.copy(largeTextFollowsSystem = event.on))
+        is AppSettingsIntent.SetAutomaticUpdateChecks -> if (state.working) state else state.copy(prefs = state.prefs.copy(automaticUpdateChecks = event.on))
         AppSettingsIntent.CheckUpdates -> if (state.updateCheck) state.copy(update = UpdateCheck.Checking) else state
         is Update -> state.copy(update = event.u)
         is AppSettingsIntent.Ask -> state.copy(confirm = event.what)
@@ -218,7 +221,9 @@ class AppSettingsMachine(
     override fun handle(event: Any, before: AppSettingsState, after: AppSettingsState) {
         when (event) {
             is AppSettingsIntent.SetHaptics, is AppSettingsIntent.SetLargeText, is AppSettingsIntent.SetAutomaticUpdateChecks ->
-                scope.launch { d.appPrefs.save(after.prefs) }
+                if (!before.working && after.prefs != before.prefs) {
+                scope.launch { persistCurrentPrefs() }
+            }
             AppSettingsIntent.CheckUpdates -> if (d.store.updateCheck && before.update != UpdateCheck.Checking) scope.launch {
                 val v = attempt { d.updates.latestNewerThan(d.appVersion) }.getOrNull()
                 send(Update(when { v == null -> UpdateCheck.Failed; v.isEmpty() -> UpdateCheck.Latest; else -> UpdateCheck.Available(v) }))
@@ -272,22 +277,35 @@ class AppSettingsMachine(
     private suspend fun applySettingsImport(draft: AppSettingsBackupDocument) {
         send(BackupUpdated(SettingsBackupStatus.APPLYING, draft, state.value.backupHistory, state.value.canUndoSettingsImport, working = true))
         try {
-            settingsBackup.apply(draft)
-            refreshBackup(SettingsBackupStatus.IMPORTED, prefs = d.appPrefs.load(), working = false)
+            val persisted = appPrefsMutex.withLock {
+                settingsBackup.apply(draft)
+                d.appPrefs.load()
+            }
+            refreshBackup(SettingsBackupStatus.IMPORTED, prefs = persisted, working = false)
         } catch (_: Exception) {
-            refreshBackup(SettingsBackupStatus.FAILED, working = false)
+            val persisted = appPrefsMutex.withLock { attempt { d.appPrefs.load() }.getOrNull() }
+            refreshBackup(SettingsBackupStatus.FAILED, prefs = persisted, working = false)
         }
     }
 
     private suspend fun undoSettingsImport() {
         send(BackupUpdated(SettingsBackupStatus.UNDOING, null, state.value.backupHistory, state.value.canUndoSettingsImport, working = true))
         try {
-            val restored = settingsBackup.undo()
+            val (restored, persisted) = appPrefsMutex.withLock {
+                val restored = settingsBackup.undo()
+                restored to if (restored == null) null else d.appPrefs.load()
+            }
             if (restored == null) refreshBackup(SettingsBackupStatus.FAILED, working = false)
-            else refreshBackup(SettingsBackupStatus.UNDONE, prefs = d.appPrefs.load(), working = false)
+            else refreshBackup(SettingsBackupStatus.UNDONE, prefs = persisted, working = false)
         } catch (_: Exception) {
-            refreshBackup(SettingsBackupStatus.FAILED, working = false)
+            val persisted = appPrefsMutex.withLock { attempt { d.appPrefs.load() }.getOrNull() }
+            refreshBackup(SettingsBackupStatus.FAILED, prefs = persisted, working = false)
         }
+    }
+
+    private suspend fun persistCurrentPrefs() = appPrefsMutex.withLock {
+        val current = state.value
+        if (!current.working) d.appPrefs.save(current.prefs)
     }
 
     private suspend fun refreshBackup(
