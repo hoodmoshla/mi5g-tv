@@ -48,11 +48,12 @@ private val themes = listOf(
 
 private fun home(
     themeId: String? = null, drift: Boolean = false, busy: Busy? = null, stock: Boolean = true, ours: Boolean = true, dock: List<AppChoice> = defaultDock,
-    updateTo: String? = null,
+    updateTo: String? = null, hiddenApps: List<PackageName> = emptyList(),
 ) = HomeScreenState(
     tvName = "Mi TV 4A", dock = dock, apps = apps, themeId = themeId, themes = themes, drift = drift,
     stock = if (stock) Samples.stockLauncher else null, busy = busy, homeScreenOurs = ours, updateTo = updateTo,
     tvSideSettings = updateTo == null,   // a TV still on launcher 2.0 (an update offered) has no Launcher settings
+    hiddenApps = hiddenApps,
 )
 
 // 0.3.3 D2: a TV without the new home screen, as HomeScreenMachine loads it (no dock, no stock row).
@@ -102,6 +103,11 @@ object LauncherShots {
         Shot("home_dock_sheet_empty") { SheetOver({ HomeScreen(home(), {}, {}) }) { DockContent(dockState(emptyList()), apps, {}) } },
         Shot("home_dock_sheet_rows", 1200.dp) { SheetOver({ HomeScreen(home(dock = rowsDock), {}, {}) }) { DockContent(dockState(rowsDock), apps, {}) } },
         Shot("home_dock_sheet_new_row", 1200.dp) { SheetOver({ HomeScreen(home(), {}, {}) }) { DockContent(dockState(defaultDock, addRow = true), apps, {}) } },
+        Shot("home_hidden_apps_sheet", 1000.dp) {
+            SheetOver({ HomeScreen(home(hiddenApps = listOf(apps[0].pkg)), {}, {}) }) {
+                HiddenAppsContent(apps, setOf(apps[0].pkg), onToggle = { _, _ -> }, onDone = {})
+            }
+        },
         Shot("home_stock_preview") { SheetOver({ HomeScreen(home(), {}, {}) }) { StockPreviewContent(stockPlan) {} } },
         Shot("home_update_preview") { SheetOver({ HomeScreen(home(updateTo = "2.4"), {}, {}) }) { UpdatePreviewContent(updatePlan, "2.4") {} } },
     )

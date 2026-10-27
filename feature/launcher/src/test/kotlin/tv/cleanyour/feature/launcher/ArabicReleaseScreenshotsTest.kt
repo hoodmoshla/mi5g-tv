@@ -117,5 +117,11 @@ class ArabicReleaseScreenshotsTest {
         record("02_home_installed_manage_ar.png", 820.dp) {
             HomeScreen(installedState, {}, {})
         }
+        val hidden = listOf(dock[0].pkg)
+        record("03_home_hidden_apps_ar.png", 1000.dp) {
+            SheetOver({ HomeScreen(installedState.copy(hiddenApps = hidden), {}, {}) }) {
+                HiddenAppsContent(dock, hidden.toSet(), onToggle = { _, _ -> }, onDone = {})
+            }
+        }
     }
 }

@@ -648,6 +648,83 @@ class ManageMachinesTest {
         assertEquals(apps.take(12), HomePrefs(h.documents).load(tv.id)?.dock)
     }
 
+    @Test fun hiddenAppsAreSavedRestoredAndDoNotDisablePackages() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val tv = h.knownTv().copy(launcher = LauncherState(1, Samples.zeroHash, Samples.zeroHash, Samples.zeroHash)).also { h.tvs.upsert(it) }
+        val hiddenPkg = PackageName("com.example.alpha")
+        val otherPkg = PackageName("com.example.beta")
+        fun state(label: String) = PackageState(EnabledState.ENABLED, system = false, versionCode = 1, signer = null,
+            persistent = false, tvInput = false, label = label, installedByUs = false)
+        h.snapshots.save(Samples.snapshot(packages = Samples.miTvPackages() + mapOf(hiddenPkg to state("Alpha"), otherPkg to state("Beta")),
+            takenAtMs = Samples.NOW_MS + 1))
+
+        val auroraDefault = PackageName("com.example.aurora_default")
+        val sixDefault = PackageName("com.example.six_default")
+        val themes = FakeThemeSource(listOf(
+            Theme("aurora", "Aurora", "Navy", LauncherConfigDoc(hiddenApps = listOf(auroraDefault)), null),
+            Theme("six-columns", "Six columns", "More apps", LauncherConfigDoc(columns = 6, hiddenApps = listOf(sixDefault)), null),
+        ))
+        HomePrefs(h.documents).save(tv.id, HomeChoice(listOf(otherPkg), "aurora", cards = false, hiddenApps = listOf(hiddenPkg)))
+        val machine = HomeScreenMachine(h.manageDeps(encoder = ConfigEncoder.Codec, themes = themes), backgroundScope, tv.id)
+        settle()
+        assertEquals(listOf(hiddenPkg), machine.state.value.hiddenApps)
+
+        machine.dispatch(HomeScreenIntent.SetTheme("six-columns")); settle()
+        assertEquals(listOf(hiddenPkg), h.planner.requests.filterIsInstance<PlanRequest.ApplyTheme>().last().doc.hiddenApps)
+        assertEquals(listOf(hiddenPkg), HomePrefs(h.documents).load(tv.id)?.hiddenApps)
+
+        machine.dispatch(HomeScreenIntent.SetHiddenApps(listOf(hiddenPkg, otherPkg))); settle()
+        assertEquals(listOf(hiddenPkg, otherPkg), h.planner.requests.filterIsInstance<PlanRequest.ApplyTheme>().last().doc.hiddenApps)
+        assertEquals(listOf(hiddenPkg, otherPkg), HomePrefs(h.documents).load(tv.id)?.hiddenApps)
+
+        machine.dispatch(HomeScreenIntent.SetHiddenApps(null)); settle()
+        assertEquals(listOf(sixDefault), h.planner.requests.filterIsInstance<PlanRequest.ApplyTheme>().last().doc.hiddenApps)
+        val resetChoice = assertNotNull(HomePrefs(h.documents).load(tv.id))
+        assertNull(resetChoice.hiddenApps)
+        assertTrue(resetChoice.hiddenAppsResetToTheme)
+        assertEquals(listOf(sixDefault), machine.state.value.hiddenApps)
+
+        machine.dispatch(HomeScreenIntent.SetTheme("aurora")); settle()
+        assertEquals(listOf(auroraDefault), h.planner.requests.filterIsInstance<PlanRequest.ApplyTheme>().last().doc.hiddenApps,
+            "a reset follows the newly selected look instead of pinning the previous default")
+        assertTrue(HomePrefs(h.documents).load(tv.id)?.hiddenAppsResetToTheme == true)
+        assertEquals(EnabledState.ENABLED, h.snapshots.latest(tv.id)?.packages?.get(hiddenPkg)?.enabled,
+            "hiding a shortcut must not disable or uninstall its package")
+    }
+
+    @Test fun hiddenAppsPreferSavedChoiceThenReadableOverlayAndUseThemeDefaults() {
+        val saved = PackageName("com.example.saved")
+        val tvChoice = PackageName("com.example.tv_choice")
+        val overlay = LauncherConfigCodec.encode(LauncherConfigDoc(hiddenApps = listOf(tvChoice)))
+        assertEquals(listOf(saved), HiddenAppChoices.explicit(listOf(saved), overlay))
+        assertEquals(listOf(tvChoice), HiddenAppChoices.explicit(null, overlay))
+        assertNull(HiddenAppChoices.explicit(null, overlay, resetToTheme = true))
+        assertNull(HiddenAppChoices.explicit(null, LauncherConfigCodec.encode(LauncherConfigDoc())))
+        val themeDefault = PackageName("com.example.theme_default")
+        assertEquals(listOf(themeDefault), HiddenAppChoices.defaults(Theme("custom", "Custom", "Test", LauncherConfigDoc(hiddenApps = listOf(themeDefault)), null)))
+    }
+
+    @Test fun legacyHomePrefsWithoutHiddenChoicesRemainReadable() = runTest {
+        val h = Harness()
+        val tv = h.knownTv()
+        h.documents.write("tvs/${tv.id.value}/home.txt", "dock=com.example.app\ntheme=aurora\ncards=false\n".encodeToByteArray())
+        val choice = assertNotNull(HomePrefs(h.documents).load(tv.id))
+        assertEquals(listOf(PackageName("com.example.app")), choice.dock)
+        assertFalse(choice.cards ?: true)
+        assertNull(choice.hiddenApps)
+        assertFalse(choice.hiddenAppsResetToTheme)
+
+        val prefs = HomePrefs(h.documents)
+        prefs.save(tv.id, choice.copy(hiddenApps = emptyList()))
+        val explicitlyEmpty = assertNotNull(prefs.load(tv.id))
+        assertEquals(emptyList(), explicitlyEmpty.hiddenApps)
+        assertFalse(explicitlyEmpty.hiddenAppsResetToTheme)
+        prefs.save(tv.id, choice.copy(hiddenApps = null, hiddenAppsResetToTheme = true))
+        val reset = assertNotNull(prefs.load(tv.id))
+        assertNull(reset.hiddenApps)
+        assertTrue(reset.hiddenAppsResetToTheme)
+    }
+
     // RFC-CARDS-1: a TV set up with the new home screen and module cards off, Retro in the index.
     private suspend fun Harness.cardsOffTv(dock: List<PackageName>): Pair<Tv, Module> {
         val apk = "retro apk bytes".encodeToByteArray()
@@ -661,7 +738,7 @@ class ManageMachinesTest {
         retroFetcher = FakeArtifactFetcher(blobs, mapOf(ref.url to apk))
         val tv = knownTv().copy(launcher = LauncherState(1, Samples.zeroHash, Samples.zeroHash, Samples.zeroHash))
         tvs.upsert(tv)
-        HomePrefs(documents).save(tv.id, HomeChoice(dock, "aurora", cards = false))
+        HomePrefs(documents).save(tv.id, HomeChoice(dock, "aurora", cards = false, hiddenApps = listOf(PackageName("com.example.hidden"))))
         return tv to retro
     }
     private var retroFetcher: tv.cleanyour.core.registry.ArtifactFetcher? = null
@@ -686,8 +763,9 @@ class ManageMachinesTest {
         val doc = h.pushedDoc(add.config)
         assertEquals(true, doc.moduleCards)
         assertEquals(dock, doc.dockApps)
+        assertEquals(listOf(PackageName("com.example.hidden")), doc.hiddenApps)
         assertEquals(h.themes.bundled().single { it.id == "aurora" }.wallpaper, add.wallpaper)
-        assertEquals(HomeChoice(dock, "aurora", cards = true), HomePrefs(h.documents).load(tv.id))
+        assertEquals(HomeChoice(dock, "aurora", cards = true, hiddenApps = listOf(PackageName("com.example.hidden"))), HomePrefs(h.documents).load(tv.id))
         assertEquals(add.config?.sha256, h.tvs.tvs.value.single().launcher?.ourOverlayDigest)
         assertFalse(m.state.value.cardsOff)
         // A new look later keeps the cards on.
@@ -695,6 +773,7 @@ class ManageMachinesTest {
         settle()
         home.dispatch(HomeScreenIntent.SetTheme("aurora")); settle()
         assertEquals(true, h.planner.requests.filterIsInstance<PlanRequest.ApplyTheme>().last().doc.moduleCards)
+        assertEquals(listOf(PackageName("com.example.hidden")), h.planner.requests.filterIsInstance<PlanRequest.ApplyTheme>().last().doc.hiddenApps)
         assertEquals(true, HomePrefs(h.documents).load(tv.id)?.cards)
         // With the cards already on, the next add sends no look.
         m.dispatch(ModulesIntent.DismissInstall); settle()
@@ -713,6 +792,7 @@ class ManageMachinesTest {
         val apply = h.planner.requests.filterIsInstance<PlanRequest.ApplyTheme>().single()
         assertEquals(true, apply.doc.moduleCards)
         assertEquals(true, h.pushedDoc(apply.config).moduleCards)
+        assertEquals(listOf(PackageName("com.example.hidden")), h.pushedDoc(apply.config).hiddenApps)
         assertEquals(retro.pkg.value, assertIs<InstallStep.Asking>(m.state.value.install).pkg)
         assertEquals(true, HomePrefs(h.documents).load(tv.id)?.cards)
         assertFalse(m.state.value.cardsOff)

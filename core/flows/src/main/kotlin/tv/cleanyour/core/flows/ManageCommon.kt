@@ -115,22 +115,37 @@ class ManageDeps(
 
 // The dock and theme this phone last pushed to a TV. Tv has no field for them once the wizard
 // draft is gone, so they live beside the TV record: tvs/<id>/home.txt, "dock=a,b" and "theme=id".
-// `cards` is the module_cards value the look carries (RFC-CARDS-1, "cards=true"): null when this
-// phone has not kept one for the TV yet (Cards.of decides then).
-data class HomeChoice(val dock: List<PackageName>, val themeId: String?, val cards: Boolean? = null)
+// `cards` and `hiddenApps` are nullable until this phone has kept an explicit choice for the TV;
+// callers preserve the TV overlay or theme defaults, while the reset marker distinguishes a
+// deliberate return to theme defaults from an old file that has no hidden-app preference yet.
+data class HomeChoice(
+    val dock: List<PackageName>,
+    val themeId: String?,
+    val cards: Boolean? = null,
+    val hiddenApps: List<PackageName>? = null,
+    val hiddenAppsResetToTheme: Boolean = false,
+)
 
 class HomePrefs(private val store: DocumentStore) {
     private fun path(id: TvId) = "tvs/${id.value}/home.txt"
 
     suspend fun load(id: TvId): HomeChoice? = store.read(path(id)) { bytes ->
         val map = bytes.decodeToString().lines().filter { '=' in it }.associate { it.substringBefore('=') to it.substringAfter('=') }
+        val hiddenValue = map["hidden"]
         HomeChoice(map["dock"].orEmpty().split(',').filter { it.isNotBlank() }.mapNotNull { runCatching { PackageName(it) }.getOrNull() },
-            map["theme"]?.takeIf { it.isNotBlank() }, map["cards"]?.toBooleanStrictOrNull())
+            map["theme"]?.takeIf { it.isNotBlank() }, map["cards"]?.toBooleanStrictOrNull(),
+            hiddenValue?.takeIf { it != "@theme" }?.split(',')?.filter { it.isNotBlank() }?.mapNotNull { runCatching { PackageName(it) }.getOrNull() },
+            hiddenAppsResetToTheme = hiddenValue == "@theme")
     }
 
     suspend fun save(id: TvId, choice: HomeChoice) {
         val text = "dock=${choice.dock.joinToString(",") { it.value }}\ntheme=${choice.themeId.orEmpty()}\n" +
-            (choice.cards?.let { "cards=$it\n" } ?: "")
+            (choice.cards?.let { "cards=$it\n" } ?: "") +
+            when {
+                choice.hiddenAppsResetToTheme -> "hidden=@theme\n"
+                choice.hiddenApps != null -> "hidden=${choice.hiddenApps.joinToString(",") { it.value }}\n"
+                else -> ""
+            }
         store.write(path(id), text.encodeToByteArray())
     }
 }

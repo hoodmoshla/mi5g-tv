@@ -694,10 +694,12 @@ class SetupMachineTest {
         assertNull(last().wallpaper)
         // A look and a dock with a row under it: one config.json with both.
         val apps = List(6) { PackageName("com.example.app$it") }
+        val hiddenApps = listOf(PackageName("com.example.private"))
+        HomePrefs(h.documents).save(h.tvs.tvs.value.single().id, HomeChoice(emptyList(), null, cards = false, hiddenApps = hiddenApps))
         m.dispatch(SetupIntent.SetTheme("aurora")); settle()
         m.dispatch(SetupIntent.SetDock(apps)); settle()
         val aurora = h.themes.bundled().single { it.id == "aurora" }
-        val bytes = expected(aurora.doc, apps)
+        val bytes = LauncherConfigCodec.encode(DockLayers.applyTo(aurora.doc, apps).copy(moduleCards = false, hiddenApps = hiddenApps))
         val sent = assertNotNull(last().config)
         assertTrue(bytes.contentEquals(h.blobs.bytes(sent)), "the blob is DockLayers' bytes for the dock and the look")
         assertEquals(sha256Of(bytes), sent.sha256)
@@ -715,7 +717,7 @@ class SetupMachineTest {
         assertEquals(sha256Of(bytes), h.tvs.tvs.value.single().launcher?.ourOverlayDigest)
         assertEquals(sha256Of(bytes), h.tvs.tvs.value.single().launcher?.overlayDigest)
         // RFC-CARDS-1: Manage starts from what the run pushed: the dock, the look and cards off.
-        assertEquals(HomeChoice(apps, "aurora", cards = false), HomePrefs(h.documents).load(h.tvs.tvs.value.single().id))
+        assertEquals(HomeChoice(apps, "aurora", cards = false, hiddenApps = hiddenApps), HomePrefs(h.documents).load(h.tvs.tvs.value.single().id))
     }
 
     // RFC-CARDS-1: the first Setup never turns module cards on, so the new home screen never asks

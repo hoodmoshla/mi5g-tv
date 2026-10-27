@@ -55,10 +55,14 @@ data class HomeScreenState(
     val updatePreview: Plan? = null,
     val tvSideSettings: Boolean = false,                // the TV's launcher has Launcher settings of its own (2.4, versionCode 5, and later)
     val notOnTv: NotOnTv? = null,                       // 0.3.3 D2: the new home screen is not on this TV; no dock or look rows
+    val hiddenApps: List<PackageName> = emptyList(),
+    val hiddenAppsOverride: List<PackageName>? = null,
+    val hiddenAppsResetToTheme: Boolean = false,
 )
 
 sealed interface HomeScreenIntent {
     data class SetDock(val dock: List<PackageName>) : HomeScreenIntent
+    data class SetHiddenApps(val hiddenApps: List<PackageName>?) : HomeScreenIntent
     data class SetTheme(val id: String) : HomeScreenIntent
     data object RestoreMine : HomeScreenIntent
     data object PreviewStock : HomeScreenIntent
@@ -100,15 +104,18 @@ class HomeScreenMachine(
     override fun handle(event: Any, before: HomeScreenState, after: HomeScreenState) {
         if (before.busy != null && event is HomeScreenIntent) return
         // 0.3.3 D2: nothing to send the dock or the look to.
-        if (after.notOnTv != null && (event is HomeScreenIntent.SetDock || event is HomeScreenIntent.SetTheme || event == HomeScreenIntent.RestoreMine)) return
+        if (after.notOnTv != null && (event is HomeScreenIntent.SetDock || event is HomeScreenIntent.SetHiddenApps || event is HomeScreenIntent.SetTheme || event == HomeScreenIntent.RestoreMine)) return
         when (event) {
-            is HomeScreenIntent.SetDock -> scope.launch { apply(event.dock, after.themeId) }
+            is HomeScreenIntent.SetDock -> scope.launch { apply(event.dock, after.themeId, after.hiddenAppsOverride, after.hiddenAppsResetToTheme) }
+            is HomeScreenIntent.SetHiddenApps -> scope.launch {
+                apply(savedDock() ?: after.dock.map { it.pkg }, after.themeId, event.hiddenApps, event.hiddenApps == null)
+            }
             // RF-LAUNCHER-250 F4: a new look and "Restore mine" push the dock as it was saved, as
             // ModulesMachine does, not the list as the TV shows it now (an app since gone or switched
             // off would drop out and change dock_apps, and the TV's own dock edit would stop applying,
             // upstream #340). Only SetDock changes the list.
-            is HomeScreenIntent.SetTheme -> scope.launch { apply(savedDock() ?: after.dock.map { it.pkg }, event.id) }
-            HomeScreenIntent.RestoreMine -> scope.launch { apply(savedDock() ?: after.dock.map { it.pkg }, after.themeId) }
+            is HomeScreenIntent.SetTheme -> scope.launch { apply(savedDock() ?: after.dock.map { it.pkg }, event.id, after.hiddenAppsOverride, after.hiddenAppsResetToTheme) }
+            HomeScreenIntent.RestoreMine -> scope.launch { apply(savedDock() ?: after.dock.map { it.pkg }, after.themeId, after.hiddenAppsOverride, after.hiddenAppsResetToTheme) }
             HomeScreenIntent.PreviewStock -> after.stock?.let { stock -> scope.launch { send(Preview(writer.preview(tvId, PlanRequest.UseStockHome(stock)))) } }
             HomeScreenIntent.UseStock -> after.stock?.let { stock -> scope.launch { useStock(stock) } }
             HomeScreenIntent.PreviewUpdate -> scope.launch { previewUpdate() }
@@ -126,18 +133,24 @@ class HomeScreenMachine(
         val snap = d.snapshots.latest(tvId)
         val packages = snap?.packages.orEmpty()
         val choice = d.homePrefs.load(tvId)
+        val selectedTheme = theme(choice?.themeId)
+        val resetHidden = choice?.hiddenAppsResetToTheme == true
+        val hiddenOverride = HiddenAppChoices.explicit(choice?.hiddenApps, snap?.launcherOverlay, resetHidden)
+        val defaultHidden = HiddenAppChoices.defaults(selectedTheme)
+        val hidden = hiddenOverride ?: defaultHidden
         // The stored snapshot cannot say which apps are launchable, so the rule without that
         // answer applies: never a home screen, a provider or a system-only package.
         val apps = (snap?.let { DockCandidates.of(it, null, profile, d.facts) } ?: emptySet())
             .map { AppChoice(it, d.nameOf(it, packages[it]?.label)) }.sortedBy { it.name.lowercase() }
         // The dock as the TV shows it: an app no longer there (gone, switched off) is skipped and the
         // later ones move up a slot, as the launcher does.
-        val columns = DockLayers.columnsOf(theme(choice?.themeId)?.doc)
+        val columns = DockLayers.columnsOf(selectedTheme?.doc)
         val shown = { p: PackageName -> snap == null || packages[p]?.enabled.let { it != null && it != EnabledState.DISABLED && it != EnabledState.DISABLED_USER } }
         val dock = DockLayers.decode(choice?.dock.orEmpty(), shown, columns).map { AppChoice(it, d.nameOf(it, packages[it]?.label)) }
         send(Loaded(HomeScreenState(tv.nickname, dock, apps, choice?.themeId, state.value.themes, stock = profile?.stockLaunchers?.firstOrNull(),
             homeScreenOurs = tv.launcher != null, columns = columns, updateTo = updateTo(tv, packages),
             tvSideSettings = (packages[Launcher.pkg]?.versionCode ?: 0) >= FIRST_WITH_TV_SETTINGS,
+            hiddenApps = hidden, hiddenAppsOverride = hiddenOverride, hiddenAppsResetToTheme = resetHidden,
             notOnTv = notOnTv(tv, snap))))
     }
 
@@ -234,15 +247,17 @@ class HomeScreenMachine(
     // the dock and the rows under it in order, rows_below_dock the rows under the dock that hold an
     // app (DockLayers), so the TV shows the rows the sheet showed. module_cards keeps this TV's cards
     // choice (RFC-CARDS-1): a new dock or theme never turns cards on or off.
-    private suspend fun apply(dock: List<PackageName>, themeId: String?) {
+    private suspend fun apply(dock: List<PackageName>, themeId: String?, hiddenApps: List<PackageName>?, resetHiddenToTheme: Boolean) {
         val cards = Cards.current(d, tvId, d.homePrefs.load(tvId))
-        val look = attempt { Look.encode(d.encoder, d.blobs, theme(themeId), dock, cards) }.getOrNull()
+        val selectedTheme = theme(themeId)
+        val hiddenOverride = hiddenApps?.distinct()?.sortedBy { it.value }
+        val look = attempt { Look.encode(d.encoder, d.blobs, selectedTheme, dock, cards, hiddenOverride) }.getOrNull()
             ?: return effect(ManageEffect.Snackbar(SnackKind.FAILED, "", false))
         val kept = look.doc.dockApps.orEmpty()
         val r = writer.write(tvId, PlanRequest.ApplyTheme(look.doc, look.config, look.wallpaper)) { send(BusyNow(it)) }
         send(BusyNow(null))
         if (r is WriteResult.Done) {
-            d.homePrefs.save(tvId, HomeChoice(kept, themeId, cards))
+            d.homePrefs.save(tvId, HomeChoice(kept, themeId, cards, hiddenOverride, resetHiddenToTheme))
             rememberPushedLook(d, tvId, look.digest)
             send(Drift(false))
             effect(ManageEffect.Snackbar(SnackKind.HOME_SAVED, "", false))
@@ -277,17 +292,20 @@ class HomeScreenMachine(
         val profile = d.profileOf(tv)
         val snap = d.snapshots.latest(tvId)
         val choice = d.homePrefs.load(tvId)
+        val selectedTheme = theme(choice?.themeId)
+        val resetHidden = choice?.hiddenAppsResetToTheme == true
+        val hiddenOverride = HiddenAppChoices.explicit(choice?.hiddenApps, snap?.launcherOverlay, resetHidden)?.distinct()?.sortedBy { it.value }
         val dock = choice?.dock?.takeIf { it.isNotEmpty() }
             ?: snap?.let { DockPicker.Ranking.pick(profile, it.packages.keys, it.hdmi.isNotEmpty(), profile?.liveTv, "ar") }.orEmpty()
         val cards = Cards.of(choice?.cards, snap?.launcherOverlay, Cards.SETUP_DEFAULT)
-        val look = attempt { Look.encode(d.encoder, d.blobs, theme(choice?.themeId), dock, cards) }.getOrNull()
+        val look = attempt { Look.encode(d.encoder, d.blobs, selectedTheme, dock, cards, hiddenOverride) }.getOrNull()
             ?: return effect(ManageEffect.Snackbar(SnackKind.FAILED, "", false))
         val kept = look.doc.dockApps.orEmpty()
         val r = writer.write(tvId, PlanRequest.UpdateLauncher(pin, look.config, look.wallpaper, installFresh = true), fresh = true) { send(BusyNow(it)) }
         send(BusyNow(null))
         when {
             r is WriteResult.Done && (r.finished.status == RunStatus.COMPLETED || r.finished.status == RunStatus.COMPLETED_WITH_SKIPS) -> {
-                d.homePrefs.save(tvId, HomeChoice(kept, choice?.themeId, cards))
+                d.homePrefs.save(tvId, HomeChoice(kept, choice?.themeId, cards, hiddenOverride, resetHidden))
                 rememberPushedLook(d, tvId, look.digest)
                 attempt { d.homeDecisions.save(tvId, HomeDecision(true, alreadyOn = true)) }
                 d.access.live(tvId)?.let { s -> attempt { d.runner.freshSnapshot(s) } }

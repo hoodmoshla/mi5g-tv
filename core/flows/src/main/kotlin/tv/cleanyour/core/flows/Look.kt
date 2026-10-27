@@ -17,11 +17,20 @@ import tv.cleanyour.core.store.BlobStore
 // under the dock that hold an app (DockLayers), encoded and stored in the BlobStore. Setup's plan
 // (RFC-DOCK-1), Manage's ApplyTheme and the Modules add (RFC-CARDS-1) all push what this makes, so
 // one choice is the same bytes wherever it is sent from. The wallpaper is the theme's own, when it
-// has one. module_cards is always written: `cards` is this TV's cards choice (Cards).
+// has one. module_cards is always written: `cards` is this TV's cards choice (Cards). hidden_apps
+// stays with the base look unless a saved or user-edited list is passed.
 internal class Look(val doc: LauncherConfigDoc, val digest: Sha256, val config: BlobRef, val wallpaper: BlobRef?) {
     companion object {
-        suspend fun encode(encoder: ConfigEncoder, blobs: BlobStore, theme: Theme?, dock: List<PackageName>, cards: Boolean): Look {
-            val doc = DockLayers.applyTo(theme?.doc ?: LauncherConfigDoc(), dock).copy(moduleCards = cards)
+        suspend fun encode(
+            encoder: ConfigEncoder,
+            blobs: BlobStore,
+            theme: Theme?,
+            dock: List<PackageName>,
+            cards: Boolean,
+            hiddenApps: List<PackageName>? = null,
+        ): Look {
+            val base = theme?.doc ?: LauncherConfigDoc()
+            val doc = DockLayers.applyTo(base, dock).copy(moduleCards = cards, hiddenApps = hiddenApps ?: base.hiddenApps)
             val bytes = encoder.encode(doc)
             return Look(doc, sha256Of(bytes), blobs.putBytes(bytes), theme?.wallpaper)
         }
@@ -50,6 +59,20 @@ internal object Cards {
     // snapshot's, unless a fresher one is given).
     suspend fun current(d: ManageDeps, tvId: TvId, choice: HomeChoice?, overlay: ByteArray? = null): Boolean =
         of(choice?.cards, overlay ?: d.snapshots.latest(tvId)?.launcherOverlay, MANAGE_DEFAULT)
+}
+
+// Preserve a saved choice, then a readable TV overlay. Without either, use the selected theme or the
+// launcher's built-in defaults; null remains meaningful so a theme change can use its own defaults.
+internal object HiddenAppChoices {
+    fun explicit(saved: List<PackageName>?, overlay: ByteArray?, resetToTheme: Boolean = false): List<PackageName>? {
+        if (resetToTheme) return null
+        if (saved != null) return saved
+        val doc = overlay?.let { bytes -> runCatching { LauncherConfigCodec.decode(bytes) }.getOrNull() as? DecodeResult.Ok }?.doc
+        return doc?.hiddenApps
+    }
+
+    fun defaults(theme: Theme?): List<PackageName> = theme?.doc?.hiddenApps
+        ?: LauncherConfigCodec.builtInDefaults.hiddenApps.mapNotNull { raw -> runCatching { PackageName(raw) }.getOrNull() }
 }
 
 // D15: the digest of the config.json Manage just pushed, so the next connect can warn on drift.
