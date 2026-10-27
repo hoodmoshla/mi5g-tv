@@ -23,6 +23,11 @@ import tv.cleanyour.core.model.TvAnimationScale
 import tv.cleanyour.core.model.TvKeyEvent
 import java.security.MessageDigest
 
+enum class PrivateDnsSetting(val key: String) {
+    MODE("private_dns_mode"),
+    SPECIFIER("private_dns_specifier"),
+}
+
 // The one renderer (SECURITY 3, PRODUCT-SPEC 5.2). An op is a verb with typed arguments; this
 // turns it into exactly one argv list of constant words plus validated tokens, quotes every token,
 // joins with single spaces and asserts the result (ShellTokens). The only line with more than one
@@ -388,16 +393,17 @@ class ShellRenderer(private val watchdogVariant: WatchdogVariant = WatchdogVaria
             return ShellLine(ShellTokens.line(listOf("rm", "-f", apk.absolute)))
         }
 
-        fun applyAdGuardDnsLines(): List<ShellLine> = listOf(
-            ShellLine(ShellTokens.line(listOf(PM, "grant", "com.midroid.mi5gtv.dns", "android.permission.WRITE_SECURE_SETTINGS"))),
-            ShellLine(ShellTokens.line(listOf(SETTINGS, "put", "global", "private_dns_mode", "hostname"))),
-            ShellLine(ShellTokens.line(listOf(SETTINGS, "put", "global", "private_dns_specifier", "dns.adguard-dns.com"))),
-        )
+        fun grantAdGuardDnsPermissionLine(): ShellLine =
+            ShellLine(ShellTokens.line(listOf(PM, "grant", "com.midroid.mi5gtv.dns", "android.permission.WRITE_SECURE_SETTINGS")))
 
-        fun resetPrivateDnsLines(): List<ShellLine> = listOf(
-            ShellLine(ShellTokens.line(listOf(SETTINGS, "put", "global", "private_dns_mode", "opportunistic"))),
-            ShellLine(ShellTokens.line(listOf(SETTINGS, "delete", "global", "private_dns_specifier"))),
-        )
+        fun privateDnsGetLine(setting: PrivateDnsSetting): ShellLine =
+            ShellLine(ShellTokens.line(listOf(SETTINGS, "get", "global", setting.key)))
+
+        fun privateDnsPutLine(setting: PrivateDnsSetting, value: String): ShellLine =
+            ShellLine(ShellTokens.line(listOf(SETTINGS, "put", "global", setting.key, value)))
+
+        fun privateDnsDeleteLine(setting: PrivateDnsSetting): ShellLine =
+            ShellLine(ShellTokens.line(listOf(SETTINGS, "delete", "global", setting.key)))
 
         fun launchMainActivityLine(pkg: PackageName): ShellLine {
             val comp = Component(pkg, ".MainActivity")

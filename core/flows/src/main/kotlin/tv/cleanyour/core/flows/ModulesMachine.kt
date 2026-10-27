@@ -242,7 +242,11 @@ class ModulesMachine(
         if (outcome is RunOutcome.StartRefused && outcome.refusal == StartRefusal.RUN_OPEN && TvWriter(d).openRun(tv, session) != null) return send(Step(null))
         if (outcome !is RunOutcome.Finished) return send(Step(InstallStep.Failed(m.name, null)))
         if (id == "adguard-dns") {
-            ShellRenderer.applyAdGuardDnsLines().forEach { line -> attempt { TvShellRunner.run(session, line) } }
+            when (d.privateDns.applyAdGuard(tvId, session)) {
+                PrivateDnsApplyResult.APPLIED -> Unit
+                PrivateDnsApplyResult.NOT_APPLIED -> effect(ManageEffect.Snackbar(SnackKind.PRIVATE_DNS_NOT_APPLIED, m.name, false))
+                PrivateDnsApplyResult.RESTORE_PENDING -> effect(ManageEffect.Snackbar(SnackKind.PRIVATE_DNS_RESTORE_PENDING, m.name, false))
+            }
         }
         if (tv.launcher == null && m.pkg.value.startsWith("com.midroid.mi5gtv.")) {
             attempt { TvShellRunner.run(session, ShellRenderer.launchMainActivityLine(m.pkg)) }
@@ -300,15 +304,43 @@ class ModulesMachine(
     private suspend fun remove(id: String) {
         val m = module(id) ?: return
         send(Removing(id))
-        val r = TvWriter(d).write(tvId, PlanRequest.RemoveModule(m.pkg))
-        if (r is WriteResult.Done) {
-            d.access.live(tvId)?.let { s ->
-                if (id == "adguard-dns") {
-                    ShellRenderer.resetPrivateDnsLines().forEach { line -> attempt { TvShellRunner.run(s, line) } }
+        var dnsRestore: PrivateDnsRestoreResult? = null
+        var dnsRestoreFailed = false
+        val preflight: (suspend (Tv, TvSession, tv.cleanyour.core.planner.Plan) -> WritePreflight)? =
+            if (id == "adguard-dns") {
+                { _, session, plan ->
+                    val needsPass = GateKeeper.needsPass(plan)
+                    val pass = if (needsPass) d.gate.pass(tvId, d.tv(tvId)?.nickname ?: m.name) else null
+                    if (needsPass && pass == null) {
+                        WritePreflight.Cancelled
+                    } else {
+                        val restore = d.privateDns.restoreBeforeRemoval(tvId, session)
+                        dnsRestore = restore
+                        if (restore == PrivateDnsRestoreResult.FAILED) {
+                            dnsRestoreFailed = true
+                            WritePreflight.Failed("Private DNS restore failed")
+                        } else {
+                            WritePreflight.Ready(pass)
+                        }
+                    }
                 }
+            } else null
+        val r = TvWriter(d).write(tvId, PlanRequest.RemoveModule(m.pkg), preflight = preflight)
+        if (r is WriteResult.Done) {
+            if ((dnsRestore == PrivateDnsRestoreResult.RESTORED || dnsRestore == PrivateDnsRestoreResult.USER_SETTINGS_PRESERVED) && !d.privateDns.retireBackup(tvId)) {
+                effect(ManageEffect.Snackbar(SnackKind.PRIVATE_DNS_BACKUP_RETAINED, m.name, false))
+            } else if (dnsRestore == PrivateDnsRestoreResult.NO_BACKUP) {
+                effect(ManageEffect.Snackbar(SnackKind.PRIVATE_DNS_NO_BACKUP, m.name, false))
+            } else {
+                effect(ManageEffect.Snackbar(SnackKind.MODULE_REMOVED, m.name, false))
+            }
+            d.access.live(tvId)?.let { s ->
                 attempt { d.snapshots.save(d.runner.freshSnapshot(s)) }
             }
-            effect(ManageEffect.Snackbar(SnackKind.MODULE_REMOVED, m.name, false))
+        } else if (dnsRestoreFailed) {
+            effect(ManageEffect.Snackbar(SnackKind.PRIVATE_DNS_RESTORE_FAILED, m.name, false))
+        } else if (dnsRestore == PrivateDnsRestoreResult.RESTORED || dnsRestore == PrivateDnsRestoreResult.USER_SETTINGS_PRESERVED) {
+            effect(ManageEffect.Snackbar(SnackKind.PRIVATE_DNS_REMOVAL_FAILED, m.name, false))
         }
         send(Removing(null))
         load()

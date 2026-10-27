@@ -35,6 +35,12 @@
     <string name="modules_remove_body">سيؤدي هذا إلى إزالة التطبيق من التلفاز، بينما تبقى شاشتك الرئيسية وبطاقاتك الأخرى كما هي.</string>
     <string name="modules_remove_confirm">إزالة</string>
     <string name="modules_removed">تمت إزالة {name}.</string>
+    <string name="modules_private_dns_not_applied">أُضيفت {name}، لكن تعذّر تغيير DNS الخاص بأمان؛ تُركت الإعدادات السابقة كما هي أو أُعيدت.</string>
+    <string name="modules_private_dns_restore_pending">لم تكتمل استعادة DNS الخاص بعد إضافة {name}. ما زالت القيم السابقة المحفوظة موجودة؛ أزلها عندما يكون التلفاز متصلًا لإعادة المحاولة.</string>
+    <string name="modules_private_dns_restore_failed">تعذّر التأكد من استعادة DNS الخاص، لذلك لم تتم إزالة {name}. تحقق من اتصال التلفاز ثم أعد المحاولة.</string>
+    <string name="modules_private_dns_no_backup">أُزيلت {name}، لكن لم تكن هناك إعدادات سابقة محفوظة لـDNS الخاص. تُركت الإعدادات الحالية دون تغيير.</string>
+    <string name="modules_private_dns_backup_retained">أُزيلت {name} واستُعيدت إعدادات DNS الخاص، لكن تعذّر حذف النسخة المحلية. تحقّق من الإعدادات قبل إضافتها مجددًا.</string>
+    <string name="modules_private_dns_removal_failed">لم تكتمل إزالة {name}. استُعيدت إعدادات DNS الخاص وبقيت النسخة المحفوظة لإعادة المحاولة.</string>
     <string name="modules_state_cd">{name}: {state}</string>
 
     <!-- Update re-consent (UX 5.4) -->
