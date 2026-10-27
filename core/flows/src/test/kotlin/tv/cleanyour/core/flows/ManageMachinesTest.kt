@@ -49,6 +49,7 @@ import tv.cleanyour.core.planner.PlanResult
 import tv.cleanyour.core.planner.DefaultPlanner
 import tv.cleanyour.core.ops.ShellRenderer
 import tv.cleanyour.core.registry.FetchFailure
+import tv.cleanyour.core.session.ExecResult
 import tv.cleanyour.core.spec.DecodeResult
 import tv.cleanyour.core.spec.LauncherConfigCodec
 import tv.cleanyour.core.spec.LauncherConfigDoc
@@ -1587,6 +1588,31 @@ class ManageMachinesTest {
             val kodi = appMgr.state.value.apps.single { it.pkg == kodiPkg }
             assertEquals(case.expectedEnabled, kodi.enabled, "query=$case")
         }
+    }
+
+    @Test fun truncatedCatFallbackDoesNotSharePartialApk() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val tv = h.knownTv()
+        h.session.recording.on("pm list packages -d", "")
+        val appMgr = TvAppManagerMachine(h.manageDeps(), backgroundScope, tv.id)
+        settle()
+
+        val pkg = PackageName("org.xbmc.kodi")
+        h.session.recording.on("pm path org.xbmc.kodi", "package:/data/app/org.xbmc.kodi-1/base.apk\n")
+        h.session.recording.on("mkdir -p /data/local/tmp/cleanyourtv", "")
+        h.session.recording.on("cp /data/app/org.xbmc.kodi-1/base.apk /data/local/tmp/cleanyourtv/pulled-app.apk", "")
+        h.session.recording.on(Regex("cat /data/app/org\\.xbmc\\.kodi-1/base\\.apk")) {
+            ExecResult(0, "partial-apk", "", true, 1)
+        }
+
+        appMgr.effects.test {
+            appMgr.dispatch(TvAppManagerIntent.PullApk(pkg))
+            settle()
+            assertFalse(drain().any { it is ManageEffect.ShareApk })
+        }
+        val status = assertIs<TvAppActionStatus.Failed>(appMgr.state.value.actionStatus)
+        assertEquals(pkg, status.pkg)
+        assertEquals(TvAppActionKind.PULL_APK, status.kind)
     }
 }
 

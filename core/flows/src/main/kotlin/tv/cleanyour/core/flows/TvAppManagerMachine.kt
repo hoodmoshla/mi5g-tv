@@ -520,7 +520,7 @@ class TvAppManagerMachine(
                 } else {
                     null
                 }
-                if (catRes != null && catRes.exit == 0 && catRes.stdout.isNotEmpty()) {
+                if (catRes != null && catRes.exit == 0 && !catRes.truncated && catRes.stdout.isNotEmpty()) {
                     catRes.stdout.toByteArray(Charsets.ISO_8859_1)
                 } else {
                     null
