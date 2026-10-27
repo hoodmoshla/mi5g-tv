@@ -25,6 +25,17 @@ android {
             dimension = "store"
         }
     }
+    // A side-by-side test build. It keeps the Full behavior but has a distinct
+    // Android package and the local debug certificate, never the official key.
+    buildTypes {
+        create("beta") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".beta"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+            isDebuggable = false
+        }
+    }
     testOptions { unitTests { isIncludeAndroidResources = true } }
     // A text report per linted variant (build/reports/lint-results-<variant>.txt). No shared
     // textOutput: with two linted variants (fullDebug under `lint`, playDebug under `check`) their
