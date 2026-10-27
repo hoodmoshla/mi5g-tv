@@ -1,9 +1,13 @@
 package tv.cleanyour.core.flows
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.selects.select
 import tv.cleanyour.core.discovery.Discovery
 import tv.cleanyour.core.model.AdbError
 import tv.cleanyour.core.model.ConnectionState
@@ -90,9 +94,26 @@ class TvAccess(
                     val open = hosts.firstOrNull { discovery.probe5555(it.host) }
                     if (open != null) {
                         mutableReach.value = Reach.Connecting(tvId, tv.nickname)
-                        when (val r = sessions.open(open, tvId) { fp -> mutableReach.value = Reach.AwaitingAllow(tvId, tv.nickname, fp) }) {
+                        val r = coroutineScope {
+                            val opening = async {
+                                sessions.open(open, tvId) { fp -> mutableReach.value = Reach.AwaitingAllow(tvId, tv.nickname, fp) }
+                            }
+                            val cancelled = async { cancelGen.first { it != gen } }
+                            try {
+                                select<OpenResult?> {
+                                    opening.onAwait { it }
+                                    cancelled.onAwait { null }
+                                }
+                            } finally {
+                                cancelled.cancel()
+                                opening.cancel()
+                            }
+                        } ?: return AccessResult.Cancelled
+                        if (cancelGen.value != gen) return AccessResult.Cancelled
+                        when (r) {
                             is OpenResult.Ok -> {
                                 tvs.upsert(current(tvId, tv).copy(lastSeenAt = clock.nowMs(), debugging = DebugState.ON, lastSubnet = net.subnet ?: tv.lastSubnet))
+                                if (cancelGen.value != gen) return AccessResult.Cancelled
                                 return AccessResult.Ok(r.session)
                             }
                             is OpenResult.Failed -> when (r.error) {
