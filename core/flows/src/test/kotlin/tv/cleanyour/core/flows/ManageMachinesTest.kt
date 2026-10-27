@@ -43,6 +43,8 @@ import tv.cleanyour.core.model.TvKeyEvent
 import tv.cleanyour.testing.fixtures.FakeTvSession
 import tv.cleanyour.core.model.WizardDraft
 import tv.cleanyour.core.session.ExecResult
+import tv.cleanyour.core.store.CredentialGate
+import tv.cleanyour.core.store.GateResult
 import tv.cleanyour.core.planner.PlanKind
 import tv.cleanyour.core.planner.PlanRequest
 import tv.cleanyour.core.planner.PlanResult
@@ -526,14 +528,15 @@ class ManageMachinesTest {
         assertTrue(result != StartResult.Refused(StartRefusal.RUN_OPEN), "$result")
     }
 
-    // S6: while a run is at work on the TV (running, on the check screen, in step R), Forget this TV
-    // and Delete everything are refused with a message; nothing is asked, deleted or abandoned.
+    // S6: while a run is at work on the TV (including InDoubt), Forget this TV and Delete everything
+    // are refused with a message; nothing is asked, deleted or abandoned.
     @Test fun forgetAndDeleteEverythingWaitForARunAtWork() = runTest(timeout = 30.seconds) {
         val plan = Harness().plan(listOf(Op.Disable(adPkg)), takeover = true)
         val working = listOf(
             RunState.Running(plan, 0, emptyList(), 10, null),
             RunState.AwaitingConfirm(plan, plan.sections.single(), Samples.NOW_MS + 60_000, null, null),
             RunState.RollingBack(plan, 1),
+            RunState.InDoubt(plan, 0),
         )
         for (state in working) {
             val h = Harness()
@@ -560,6 +563,62 @@ class ManageMachinesTest {
             assertEquals(0, h.diagnosticsClears)
             assertEquals(state, h.engine.runState(tv.id).value)
         }
+    }
+
+    @Test fun resetKeyWaitsForAnyRunAtWork() = runTest(timeout = 30.seconds) {
+        val plan = Harness().plan(listOf(Op.Disable(adPkg)), takeover = true)
+        val working = listOf(
+            RunState.Running(plan, 0, emptyList(), 10, null),
+            RunState.AwaitingConfirm(plan, plan.sections.single(), Samples.NOW_MS + 60_000, null, null),
+            RunState.RollingBack(plan, 1),
+            RunState.InDoubt(plan, 0),
+        )
+        for (state in working) {
+            val h = Harness()
+            val tv = h.knownTv()
+            h.engine.emit(tv.id, state)
+            val app = AppSettingsMachine(h.manageDeps(), backgroundScope)
+            settle()
+
+            app.effects.test {
+                app.dispatch(AppSettingsIntent.Ask(AppConfirm.RESET_KEY))
+                app.dispatch(AppSettingsIntent.ResetKey); settle()
+                assertEquals(ManageEffect.Snackbar(SnackKind.RUN_BUSY_ANY, tv.nickname, undo = false), drain().single(), "$state")
+            }
+
+            assertNull(app.state.value.confirm)
+            assertTrue(h.credential.prompts.isEmpty(), "$state: nothing asked")
+            assertEquals(0, h.keyInfo.resets, "$state: key not reset")
+            assertNotNull(h.sessions.existing(tv.id), "$state: session remains open")
+            assertEquals(state, h.engine.runState(tv.id).value)
+        }
+    }
+
+    @Test fun resetKeyRechecksForRunStartedDuringCredentialPrompt() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val tv = h.knownTv()
+        val plan = h.plan(listOf(Op.Disable(adPkg)), takeover = true)
+        val running = RunState.Running(plan, 0, emptyList(), 10, null)
+        val credential = object : CredentialGate {
+            override suspend fun confirm(tvId: TvId, title: String, subtitle: String): GateResult {
+                val result = h.credential.confirm(tvId, title, subtitle)
+                h.engine.emit(tv.id, running)
+                return result
+            }
+        }
+        val m = AppSettingsMachine(h.manageDeps(gate = GateKeeper(credential, h.clock, KeyCopy)), backgroundScope)
+        settle()
+
+        m.effects.test {
+            m.dispatch(AppSettingsIntent.Ask(AppConfirm.RESET_KEY))
+            m.dispatch(AppSettingsIntent.ResetKey); settle()
+            assertEquals(ManageEffect.Snackbar(SnackKind.RUN_BUSY_ANY, tv.nickname, undo = false), drain().single())
+        }
+
+        assertEquals(1, h.credential.prompts.size, "the run starts after the prompt is requested")
+        assertEquals(0, h.keyInfo.resets)
+        assertNotNull(h.sessions.existing(tv.id))
+        assertEquals(running, h.engine.runState(tv.id).value)
     }
 
     // S3: Delete everything deletes the app's diagnostics log too.
