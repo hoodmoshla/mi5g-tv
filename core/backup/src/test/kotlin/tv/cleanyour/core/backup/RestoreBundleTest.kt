@@ -137,6 +137,14 @@ class RestoreBundleTest {
         assertTrue(e.message!!.contains("too large"), e.message)
     }
 
+    @Test fun totalUncompressedSizeIsCappedAcrossEntries() {
+        RestoreBundle.requireWithinTotalLimit(listOf(RestoreBundle.MAX_TOTAL_BYTES))
+        val error = assertFailsWith<IllegalArgumentException> {
+            RestoreBundle.requireWithinTotalLimit(listOf(RestoreBundle.MAX_TOTAL_BYTES - 1, 2))
+        }
+        assertTrue(error.message!!.contains("too large"), error.message)
+    }
+
     @Test fun aLauncherDirectoryEntryWithPayloadIsRefused() {
         val good = entries(zip()).toList()
         val bomb = good + ("launcher/" to ByteArray((RestoreBundle.MAX_ENTRY_BYTES + 1).toInt()))

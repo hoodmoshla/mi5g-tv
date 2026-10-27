@@ -80,6 +80,15 @@ object RestoreBundle {
 
     internal fun sha256(bytes: ByteArray): Sha256 =
         Sha256(MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 0xff) })
+
+    internal fun requireWithinTotalLimit(sizes: Iterable<Long>) {
+        var total = 0L
+        for (size in sizes) {
+            require(size >= 0L) { "entry size must not be negative" }
+            require(size <= MAX_TOTAL_BYTES - total) { "the zip is too large" }
+            total += size
+        }
+    }
 }
 
 class ZipRestoreBundleWriter(
@@ -124,6 +133,9 @@ class ZipRestoreBundleWriter(
                 }
             })
         }.toString().encodeToByteArray()
+
+        // Match the reader's total uncompressed-byte cap before emitting an archive it cannot reopen.
+        RestoreBundle.requireWithinTotalLimit(entries.values.map { it.size.toLong() } + manifest.size.toLong())
 
         val zip = ZipOutputStream(object : FilterOutputStream(sink) {
             override fun write(b: ByteArray, off: Int, len: Int) { out.write(b, off, len) }
