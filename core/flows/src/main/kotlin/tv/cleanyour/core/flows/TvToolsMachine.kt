@@ -13,6 +13,7 @@ import tv.cleanyour.core.model.PACKAGE_RE
 import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.core.model.RemoteDir
 import tv.cleanyour.core.model.RemotePath
+import tv.cleanyour.core.model.ShellLine
 import tv.cleanyour.core.model.TvAnimationScale
 import tv.cleanyour.core.model.TvId
 import tv.cleanyour.core.model.TvKeyEvent
@@ -133,6 +134,8 @@ data class TvToolsState(
     val sideloadStatus: SideloadStatus = SideloadStatus.Idle,
     val performanceStats: TvPerformanceStats? = null,
     val performanceLoadStatus: TvPerformanceLoadStatus = TvPerformanceLoadStatus.IDLE,
+    val networkDiagnostics: TvNetworkDiagnostics? = null,
+    val networkDiagnosticsStatus: TvNetworkDiagnosticsStatus = TvNetworkDiagnosticsStatus.IDLE,
     val speedBoostStatus: SpeedBoostStatus = SpeedBoostStatus.Idle,
     val animationScale: TvAnimationScale = TvAnimationScale.DEFAULT_1X,
     val animationScaleStatus: AnimationScaleStatus = AnimationScaleStatus.Idle,
@@ -158,6 +161,7 @@ sealed interface TvToolsIntent {
     data object ClearApk : TvToolsIntent
     data object InstallApk : TvToolsIntent
     data object RefreshPerformance : TvToolsIntent
+    data object RefreshNetworkDiagnostics : TvToolsIntent
     data object RunSpeedBoost : TvToolsIntent
     data class SetAnimationScale(val scale: TvAnimationScale) : TvToolsIntent
     data class UpdateCastUrl(val url: String) : TvToolsIntent
@@ -202,6 +206,8 @@ class TvToolsMachine(
         val scale: TvAnimationScale?,
         val statsLoaded: Boolean,
     )
+    private data object NetworkDiagnosticsStarted
+    private data class NetworkDiagnosticsFinished(val diagnostics: TvNetworkDiagnostics?)
     private data class SpeedBoostUpdate(val status: SpeedBoostStatus)
     private data class AnimationScaleUpdate(val scale: TvAnimationScale, val status: AnimationScaleStatus)
     private data class CastUrlUpdate(val status: CastUrlStatus, val clearInput: Boolean = false)
@@ -235,6 +241,15 @@ class TvToolsMachine(
             performanceStats = event.stats ?: state.performanceStats,
             animationScale = event.scale ?: state.animationScale,
             performanceLoadStatus = if (event.statsLoaded) TvPerformanceLoadStatus.IDLE else TvPerformanceLoadStatus.FAILED,
+        )
+        NetworkDiagnosticsStarted -> state.copy(networkDiagnosticsStatus = TvNetworkDiagnosticsStatus.READING)
+        is NetworkDiagnosticsFinished -> state.copy(
+            networkDiagnostics = event.diagnostics ?: state.networkDiagnostics,
+            networkDiagnosticsStatus = if (event.diagnostics != null) {
+                TvNetworkDiagnosticsStatus.READY
+            } else {
+                TvNetworkDiagnosticsStatus.FAILED
+            },
         )
         is SpeedBoostUpdate -> state.copy(speedBoostStatus = event.status)
         is AnimationScaleUpdate -> state.copy(
@@ -294,6 +309,9 @@ class TvToolsMachine(
             }
             TvToolsIntent.RefreshPerformance -> if (before.performanceLoadStatus != TvPerformanceLoadStatus.LOADING) {
                 scope.launch { loadPerformance(liveOnly = false) }
+            }
+            TvToolsIntent.RefreshNetworkDiagnostics -> if (before.networkDiagnosticsStatus != TvNetworkDiagnosticsStatus.READING) {
+                scope.launch { readNetworkDiagnostics() }
             }
             TvToolsIntent.RunSpeedBoost -> if (before.speedBoostStatus !is SpeedBoostStatus.Boosting) {
                 scope.launch { runSpeedBoost() }
@@ -568,6 +586,38 @@ class TvToolsMachine(
             null
         }
         send(PerformanceLoaded(stats, scale, statsLoaded = stats != null))
+    }
+
+    private suspend fun readNetworkDiagnostics() {
+        send(NetworkDiagnosticsStarted)
+        val session = (d.access.session(tvId) as? AccessResult.Ok)?.session
+        if (session == null) {
+            send(NetworkDiagnosticsFinished(null))
+            return
+        }
+
+        suspend fun read(line: ShellLine): String? {
+            val result = attempt { TvShellRunner.run(session, line) }.getOrNull()
+            return result?.takeIf { it.exit == 0 }?.stdout
+        }
+
+        val dns = (1..4).map { index -> read(ShellRenderer.networkDnsLine(index)) }
+        val privateDnsMode = read(ShellRenderer.privateDnsModeLine())
+        val privateDnsHostname = read(ShellRenderer.privateDnsSpecifierLine())
+        val defaultRoute = read(ShellRenderer.defaultRouteLine())
+        val probe = attempt { TvShellRunner.run(session, ShellRenderer.networkDnsProbeLine()) }.getOrNull()
+        val hasAnyResult = dns.any { it != null } || privateDnsMode != null || privateDnsHostname != null || defaultRoute != null || probe != null
+        val diagnostics = if (hasAnyResult) {
+            TvNetworkDiagnosticsParser.parse(
+                dns, privateDnsMode, privateDnsHostname, defaultRoute,
+                probeExitCode = probe?.exit,
+                probeOutput = probe?.let { it.stdout + "\n" + it.stderr },
+                probeTruncated = probe?.truncated ?: false,
+            )
+        } else {
+            null
+        }
+        send(NetworkDiagnosticsFinished(diagnostics))
     }
 
     private suspend fun runSpeedBoost() {

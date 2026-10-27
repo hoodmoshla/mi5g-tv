@@ -617,18 +617,22 @@ class ManageMachinesTest {
         val releaseImportWrite = CompletableDeferred<Unit>()
         val staleWriteStarted = CompletableDeferred<Unit>()
         val releaseStaleWrite = CompletableDeferred<Unit>()
-        val importedBytes = "haptics=false\nlargeText=true\n"
-        val staleBytes = "haptics=false\nlargeText=false\n"
+        fun hasPrefs(bytes: ByteArray, haptics: Boolean, largeText: Boolean): Boolean {
+            val prefs = bytes.decodeToString().lineSequence()
+                .filter { '=' in it }
+                .associate { it.substringBefore('=') to it.substringAfter('=') }
+            return prefs["haptics"] == haptics.toString() && prefs["largeText"] == largeText.toString()
+        }
         val racingDocuments = object : DocumentStore {
             override suspend fun <T> read(path: String, decode: (ByteArray) -> T): T? = h.documents.read(path, decode)
 
             override suspend fun write(path: String, bytes: ByteArray) {
                 when {
-                    path == "settings.txt" && bytes.decodeToString() == importedBytes -> {
+                    path == "settings.txt" && hasPrefs(bytes, haptics = false, largeText = true) -> {
                         importWriteStarted.complete(Unit)
                         releaseImportWrite.await()
                     }
-                    path == "settings.txt" && bytes.decodeToString() == staleBytes -> {
+                    path == "settings.txt" && hasPrefs(bytes, haptics = false, largeText = false) -> {
                         staleWriteStarted.complete(Unit)
                         releaseStaleWrite.await()
                     }
@@ -1413,6 +1417,35 @@ class ManageMachinesTest {
         settle()
         assertEquals(SideloadStatus.Installed("shahid-tv.apk"), tools.state.value.sideloadStatus)
         assertTrue(h.session.calls.any { it is FakeTvSession.Call.InstallStream })
+    }
+
+    @Test fun networkDiagnosticsReadOnlySettingsAndParseDnsRoute() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val tv = h.knownTv()
+        h.session.recording.on("getprop net.dns1", "192.168.1.2\n")
+        h.session.recording.on("getprop net.dns2", "1.1.1.1\n")
+        h.session.recording.on("getprop net.dns3", "null\n")
+        h.session.recording.on("getprop net.dns4", "\n")
+        h.session.recording.on("settings get global private_dns_mode", "opportunistic\n")
+        h.session.recording.on("settings get global private_dns_specifier", "null\n")
+        h.session.recording.on("ip route show default", "default via 192.168.1.1 dev wlan0 proto dhcp\n")
+        h.session.recording.on("ping -c 1 -W 3 example.com", "PING example.com (93.184.216.34) 56 data bytes\n64 bytes from 93.184.216.34: icmp_seq=1 ttl=55 time=20 ms\n")
+        val tools = TvToolsMachine(h.manageDeps(), backgroundScope, tv.id)
+        settle()
+
+        tools.dispatch(TvToolsIntent.RefreshNetworkDiagnostics)
+        settle()
+
+        assertEquals(TvNetworkDiagnosticsStatus.READY, tools.state.value.networkDiagnosticsStatus)
+        val diagnostics = assertNotNull(tools.state.value.networkDiagnostics)
+        assertEquals(listOf("192.168.1.2", "1.1.1.1"), diagnostics.dnsServers)
+        assertEquals(TvPrivateDnsMode.AUTOMATIC, diagnostics.privateDnsMode)
+        assertNull(diagnostics.privateDnsProviderHostname)
+        assertEquals("192.168.1.1", diagnostics.defaultGateway)
+        assertEquals("wlan0", diagnostics.networkInterface)
+        assertEquals(TvConnectivityProbe.HOST_REPLIED, diagnostics.connectivityProbe)
+        assertTrue(h.session.execLines.any { "ping" in it })
+        assertTrue(h.session.execLines.none { "settings' 'put" in it })
     }
 
     @Test fun installHomeScreenFromNotOnTvInstallsAndActivatesTheLauncher() = runTest(timeout = 30.seconds) {

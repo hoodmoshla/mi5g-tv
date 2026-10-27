@@ -49,7 +49,7 @@ class TvToolsRefreshTest {
         }
         compose.waitForIdle()
 
-        val option = compose.onNodeWithText("Low-resource option (0.5x)")
+        val option = compose.onNodeWithText("Reduced animations (0.5x)")
         option.performScrollTo()
         option.performClick()
         compose.waitForIdle()
