@@ -358,6 +358,7 @@
     <string name="tvapps_done_uninstall">{name} was uninstalled from the TV.</string>
     <string name="tvapps_done_pull_apk">APK backup for {name} saved and ready to share.</string>
     <string name="tvapps_failed_action">Could not complete action for {name}.</string>
+    <string name="tvapps_failed_restrict_bg">Could not apply every background restriction for {name}. Earlier settings may already have changed; check the TV before retrying.</string>
     <!-- v1.5.0: TV App Manager 7 actions, Downloader codes, Button Mapper, Force Landscape, TV Banner, GitHub Update -->
     <string name="appsettings_download_github">Download latest APK from GitHub Releases</string>
     <string name="appsettings_download_github_note">github.com/al3nkboot/mi5g-tv/releases/latest</string>

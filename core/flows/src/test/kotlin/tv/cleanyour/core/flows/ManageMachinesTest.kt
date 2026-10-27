@@ -43,6 +43,7 @@ import tv.cleanyour.core.model.TvKeyEvent
 import tv.cleanyour.core.ops.ShellRenderer
 import tv.cleanyour.testing.fixtures.FakeTvSession
 import tv.cleanyour.core.model.WizardDraft
+import tv.cleanyour.core.session.ExecResult
 import tv.cleanyour.core.planner.PlanKind
 import tv.cleanyour.core.planner.PlanRequest
 import tv.cleanyour.core.planner.PlanResult
@@ -1443,7 +1444,7 @@ class ManageMachinesTest {
         settle()
         assertEquals(CastMediaStatus.CastDone("family_photo.jpg"), tools.state.value.castMediaStatus)
 
-        // 3. TvAppManagerMachine (Launch, Force Stop, Clear Data, Pull APK, Uninstall)
+        // 3. TvAppManagerMachine (Launch, Force Stop, Background Restriction, Clear Data, Pull APK, Uninstall)
         h.session.recording.on("pm list packages -d", "")
         val appMgr = TvAppManagerMachine(h.manageDeps(), backgroundScope, tv.id)
         settle()
@@ -1454,6 +1455,26 @@ class ManageMachinesTest {
         appMgr.dispatch(TvAppManagerIntent.SelectApp(kodiApp))
         settle()
         assertEquals(kodiApp.pkg, appMgr.state.value.selectedApp?.pkg)
+
+        h.session.recording.on("cmd appops set org.xbmc.kodi RUN_IN_BACKGROUND ignore", "")
+        h.session.recording.on("cmd appops set org.xbmc.kodi WAKE_LOCK ignore", "", exit = 1)
+        h.session.recording.on("cmd appops set org.xbmc.kodi RUN_ANY_IN_BACKGROUND ignore", "")
+        val beforePartialRestriction = h.session.execLines.size
+        appMgr.dispatch(TvAppManagerIntent.RestrictBackgroundApp(kodiApp.pkg))
+        settle()
+        assertEquals(TvAppActionStatus.Failed(kodiApp.pkg, kodiApp.name, TvAppActionKind.RESTRICT_BG), appMgr.state.value.actionStatus)
+        val partialRestrictionLines = h.session.execLines.drop(beforePartialRestriction)
+        assertEquals(2, partialRestrictionLines.count { "appops" in it })
+        assertFalse(partialRestrictionLines.any { "RUN_ANY_IN_BACKGROUND" in it || "force-stop" in it })
+
+        h.session.recording.on("cmd appops set org.xbmc.kodi WAKE_LOCK ignore", "")
+        val beforeCompleteRestriction = h.session.execLines.size
+        appMgr.dispatch(TvAppManagerIntent.RestrictBackgroundApp(kodiApp.pkg))
+        settle()
+        assertEquals(TvAppActionStatus.Done(kodiApp.pkg, kodiApp.name, TvAppActionKind.RESTRICT_BG), appMgr.state.value.actionStatus)
+        val completeRestrictionLines = h.session.execLines.drop(beforeCompleteRestriction)
+        assertEquals(3, completeRestrictionLines.count { "appops" in it })
+        assertTrue(completeRestrictionLines.any { "force-stop" in it })
 
         h.session.recording.on("monkey -p org.xbmc.kodi -c android.intent.category.LAUNCHER 1", "Events injected: 1\n")
         appMgr.dispatch(TvAppManagerIntent.LaunchApp(kodiApp.pkg))
@@ -1507,6 +1528,28 @@ class ManageMachinesTest {
         settle()
         assertFalse(appMgr.state.value.apps.any { it.pkg == kodiApp.pkg })
         assertNull(appMgr.state.value.selectedApp)
+    }
+
+    @Test fun truncatedAppOpsResultStopsBackgroundRestriction() = runTest(timeout = 30.seconds) {
+        val h = Harness()
+        val tv = h.knownTv()
+        h.session.recording.on("pm list packages -3", "package:org.xbmc.kodi\n")
+        h.session.recording.on("pm list packages -d", "")
+        val appMgr = TvAppManagerMachine(h.manageDeps(), backgroundScope, tv.id)
+        settle()
+        val kodiApp = appMgr.state.value.filteredApps.first { it.pkg.value == "org.xbmc.kodi" }
+        h.session.recording.on(Regex("cmd appops set org\\.xbmc\\.kodi RUN_IN_BACKGROUND ignore")) {
+            ExecResult(0, "", "", true, 1)
+        }
+
+        val before = h.session.execLines.size
+        appMgr.dispatch(TvAppManagerIntent.RestrictBackgroundApp(kodiApp.pkg))
+        settle()
+
+        assertEquals(TvAppActionStatus.Failed(kodiApp.pkg, kodiApp.name, TvAppActionKind.RESTRICT_BG), appMgr.state.value.actionStatus)
+        val attempted = h.session.execLines.drop(before)
+        assertEquals(1, attempted.count { "appops" in it })
+        assertFalse(attempted.any { "WAKE_LOCK" in it || "RUN_ANY_IN_BACKGROUND" in it || "force-stop" in it })
     }
 }
 

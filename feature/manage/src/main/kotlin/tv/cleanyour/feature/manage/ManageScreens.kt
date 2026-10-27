@@ -1666,8 +1666,10 @@ private fun AppActionFeedback(status: TvAppActionStatus) {
             CheckLine(msg(resId, "name" to status.appName), Modifier.padding(top = 12.dp, start = 4.dp))
         }
         is TvAppActionStatus.Failed -> {
+            val resId = if (status.kind == TvAppActionKind.RESTRICT_BG) R.string.tvapps_failed_restrict_bg
+            else R.string.tvapps_failed_action
             Body(
-                msg(R.string.tvapps_failed_action, "name" to status.appName),
+                msg(resId, "name" to status.appName),
                 Modifier.padding(top = 12.dp, start = 4.dp),
                 color = CytTheme.colors.danger,
             )
