@@ -49,7 +49,6 @@ import tv.cleanyour.core.planner.PlanResult
 import tv.cleanyour.core.planner.DefaultPlanner
 import tv.cleanyour.core.ops.ShellRenderer
 import tv.cleanyour.core.registry.FetchFailure
-import tv.cleanyour.core.session.ExecResult
 import tv.cleanyour.core.spec.DecodeResult
 import tv.cleanyour.core.spec.LauncherConfigCodec
 import tv.cleanyour.core.spec.LauncherConfigDoc
