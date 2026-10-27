@@ -27,6 +27,7 @@ import tv.cleanyour.core.model.Op
 import tv.cleanyour.core.model.PackageName
 import tv.cleanyour.core.model.PermissionStatement
 import tv.cleanyour.core.model.PlanId
+import tv.cleanyour.core.session.ExecResult
 import tv.cleanyour.core.model.Tier
 import tv.cleanyour.core.model.Tv
 import tv.cleanyour.core.model.TvAnimationScale
@@ -1116,6 +1117,44 @@ class ManageMachinesTest {
         settle()
         assertFalse(appMgr.state.value.apps.any { it.pkg == kodiApp.pkg })
         assertNull(appMgr.state.value.selectedApp)
+    }
+
+    @Test fun disabledPackageQueryUsesLiveResultOnlyWhenCompleteAndSuccessful() = runTest(timeout = 30.seconds) {
+        data class QueryCase(val stdout: String, val exit: Int, val truncated: Boolean, val expectedEnabled: Boolean)
+        val cases = listOf(
+            QueryCase("", 0, false, true),
+            QueryCase("package:org.xbmc.kodi\n", 0, false, false),
+            QueryCase("", 1, false, false),
+            QueryCase("", 0, true, false),
+        )
+
+        for (case in cases) {
+            val h = Harness()
+            val tv = h.knownTv()
+            val kodiPkg = PackageName("org.xbmc.kodi")
+            val staleDisabled = PackageState(EnabledState.DISABLED_USER, false, 0, null, false, false, "Kodi", false)
+            h.snapshots.save(
+                Samples.snapshot(
+                    tvId = tv.id,
+                    packages = Samples.miTvPackages() + (kodiPkg to staleDisabled),
+                    takenAtMs = Samples.NOW_MS + 1,
+                ),
+            )
+            h.session.recording.on("pm list packages -3", "package:org.xbmc.kodi\n")
+            h.session.recording.on("pm list packages -s", "")
+            if (case.truncated) {
+                h.session.recording.on(Regex("pm list packages -d")) {
+                    ExecResult(case.exit, case.stdout, "", true, 1)
+                }
+            } else {
+                h.session.recording.on("pm list packages -d", case.stdout, exit = case.exit)
+            }
+
+            val appMgr = TvAppManagerMachine(h.manageDeps(), backgroundScope, tv.id)
+            settle()
+            val kodi = appMgr.state.value.apps.single { it.pkg == kodiPkg }
+            assertEquals(case.expectedEnabled, kodi.enabled, "query=$case")
+        }
     }
 }
 

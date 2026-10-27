@@ -199,14 +199,16 @@ class TvAppManagerMachine(
             val thirdPartyRes = attempt { TvShellRunner.run(session, ShellRenderer.listThirdPartyPackagesLine()) }.getOrNull()
             val systemRes = attempt { TvShellRunner.run(session, ShellRenderer.listSystemPackagesLine()) }.getOrNull()
             val disabledRes = attempt { TvShellRunner.run(session, ShellRenderer.listDisabledPackagesLine()) }.getOrNull()
-            val disabledPkgs = if (disabledRes != null && disabledRes.exit == 0) {
+            // A complete, successful empty list means no installed package is disabled. Keep null
+            // for failed/truncated reads so the last snapshot remains a safe fallback.
+            val disabledPkgs = if (disabledRes != null && disabledRes.exit == 0 && !disabledRes.truncated) {
                 disabledRes.stdout.lineSequence()
                     .map { it.trim() }
                     .filter { it.startsWith("package:") }
                     .map { it.removePrefix("package:").trim() }
                     .toSet()
             } else {
-                emptySet()
+                null
             }
             if (systemRes != null && systemRes.exit == 0) {
                 systemRes.stdout.lineSequence()
@@ -221,7 +223,7 @@ class TvAppManagerMachine(
                             pkg = pkg,
                             name = existing?.name ?: d.nameOf(pkg),
                             system = true,
-                            enabled = if (disabledPkgs.isNotEmpty()) raw !in disabledPkgs else (existing?.enabled ?: true),
+                            enabled = disabledPkgs?.let { raw !in it } ?: (existing?.enabled ?: true),
                         )
                     }
             }
@@ -238,7 +240,7 @@ class TvAppManagerMachine(
                             pkg = pkg,
                             name = existing?.name ?: d.nameOf(pkg),
                             system = false,
-                            enabled = if (disabledPkgs.isNotEmpty()) raw !in disabledPkgs else (existing?.enabled ?: true),
+                            enabled = disabledPkgs?.let { raw !in it } ?: (existing?.enabled ?: true),
                         )
                     }
             }
