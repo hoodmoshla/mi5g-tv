@@ -30,6 +30,7 @@ sealed interface RemoteStatus {
     data object Sending : RemoteStatus
     data object Sent : RemoteStatus
     data object Failed : RemoteStatus
+    data object UnsupportedText : RemoteStatus
 }
 
 sealed interface ScreenshotStatus {
@@ -129,6 +130,7 @@ sealed interface PowerToolStatus {
 data class TvToolsState(
     val tvName: String = "",
     val textInput: String = "",
+    val textInputTooLong: Boolean = false,
     val remoteStatus: RemoteStatus = RemoteStatus.Idle,
     val screenshotStatus: ScreenshotStatus = ScreenshotStatus.Idle,
     val sideloadStatus: SideloadStatus = SideloadStatus.Idle,
@@ -225,10 +227,15 @@ class TvToolsMachine(
 
     override fun reduce(state: TvToolsState, event: Any): TvToolsState = when (event) {
         is Loaded -> state.copy(tvName = event.tvName)
-        is TvToolsIntent.UpdateText -> state.copy(textInput = event.text.take(ShellRenderer.MAX_INPUT_TEXT_LEN))
+        is TvToolsIntent.UpdateText -> state.copy(
+            textInput = event.text.take(ShellRenderer.MAX_INPUT_TEXT_LEN),
+            textInputTooLong = event.text.length > ShellRenderer.MAX_INPUT_TEXT_LEN,
+            remoteStatus = if (state.remoteStatus == RemoteStatus.UnsupportedText) RemoteStatus.Idle else state.remoteStatus,
+        )
         is RemoteUpdate -> state.copy(
             remoteStatus = event.status,
             textInput = if (event.clearText) "" else state.textInput,
+            textInputTooLong = if (event.clearText) false else state.textInputTooLong,
         )
         is ScreenshotUpdate -> state.copy(screenshotStatus = event.status)
         is TvToolsIntent.ApkPicked -> state.copy(
@@ -280,11 +287,18 @@ class TvToolsMachine(
             TvToolsIntent.OpenTvSettings -> scope.launch { runRemoteLine(ShellRenderer.openSettingsLine(), clearText = false) }
             TvToolsIntent.SendText -> {
                 val raw = before.textInput
-                if (raw.isNotBlank()) scope.launch {
-                    val line = runCatching { ShellRenderer.inputTextLine(raw) }.getOrNull()
-                    if (line == null) {
-                        send(RemoteUpdate(RemoteStatus.Failed))
-                    } else {
+                if (
+                    !before.textInputTooLong &&
+                    raw.length <= ShellRenderer.MAX_INPUT_TEXT_LEN &&
+                    raw.isNotBlank()
+                ) scope.launch {
+                    val line = try {
+                        ShellRenderer.inputTextLine(raw)
+                    } catch (_: IllegalArgumentException) {
+                        null
+                    }
+                    if (line == null) send(RemoteUpdate(RemoteStatus.UnsupportedText))
+                    else {
                         runRemoteLine(line, clearText = true)
                     }
                 }

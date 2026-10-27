@@ -278,6 +278,8 @@
     <string name="tvtools_remote_sending">Sending command to TV...</string>
     <string name="tvtools_remote_sent">Command sent to TV.</string>
     <string name="tvtools_remote_failed">Could not reach the TV. Check the connection.</string>
+    <string name="tvtools_text_unsupported">Nothing was sent. This ADB text input cannot safely type one or more characters in your text. Use the on-screen keyboard on the TV for Arabic or other unsupported characters.</string>
+    <string name="tvtools_text_too_long">Nothing was sent. The text limit is 500 characters. Shorten the text and try again.</string>
     <string name="tvtools_text_section">Send text to TV</string>
     <string name="tvtools_text_label">Text to type on the TV</string>
     <string name="tvtools_text_send">Send</string>

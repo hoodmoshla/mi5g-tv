@@ -1393,6 +1393,41 @@ class ManageMachinesTest {
         assertEquals(RemoteStatus.Sent, tools.state.value.remoteStatus)
         assertTrue("'input' 'text' 'Shahid%sVIP'" in h.session.execLines)
 
+        val unsupportedText = "Shahid مرحبا 123"
+        val textCommandsBefore = h.session.execLines.count { it.startsWith("'input' 'text' ") }
+        tools.dispatch(TvToolsIntent.UpdateText(unsupportedText))
+        settle()
+        tools.dispatch(TvToolsIntent.SendText)
+        settle()
+        assertEquals(RemoteStatus.UnsupportedText, tools.state.value.remoteStatus)
+        assertEquals(unsupportedText, tools.state.value.textInput)
+        assertEquals(textCommandsBefore, h.session.execLines.count { it.startsWith("'input' 'text' ") })
+        tools.dispatch(TvToolsIntent.UpdateText("Shahid"))
+        settle()
+        assertEquals(RemoteStatus.Idle, tools.state.value.remoteStatus)
+
+        val overLimitTextCommands = h.session.execLines.count { it.startsWith("'input' 'text' ") }
+        tools.dispatch(TvToolsIntent.UpdateText("x".repeat(501)))
+        settle()
+        assertTrue(tools.state.value.textInputTooLong)
+        assertEquals(500, tools.state.value.textInput.length)
+        tools.dispatch(TvToolsIntent.SendText)
+        settle()
+        assertTrue(tools.state.value.textInputTooLong)
+        assertEquals(overLimitTextCommands, h.session.execLines.count { it.startsWith("'input' 'text' ") })
+
+        h.session.recording.on("'input' 'text' 'ok'", "")
+        tools.dispatch(TvToolsIntent.UpdateText("ok"))
+        settle()
+        val beforePendingSend = h.session.execLines.count { it.startsWith("'input' 'text' ") }
+        tools.dispatch(TvToolsIntent.SendText)
+        tools.dispatch(TvToolsIntent.UpdateText("x".repeat(501)))
+        settle()
+        assertEquals(RemoteStatus.Sent, tools.state.value.remoteStatus)
+        assertEquals("", tools.state.value.textInput)
+        assertFalse(tools.state.value.textInputTooLong)
+        assertEquals(beforePendingSend + 1, h.session.execLines.count { it.startsWith("'input' 'text' ") })
+
         tools.effects.test {
             tools.dispatch(TvToolsIntent.TakeScreenshot)
             settle()

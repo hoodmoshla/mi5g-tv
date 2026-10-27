@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -34,6 +35,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import kotlin.test.assertEquals
 import tv.cleanyour.core.flows.AnimationScaleStatus
 import tv.cleanyour.core.flows.CastMediaStatus
 import tv.cleanyour.core.flows.CastUrlStatus
@@ -51,6 +53,7 @@ import tv.cleanyour.core.flows.TvCard
 import tv.cleanyour.core.flows.TvInstalledApp
 import tv.cleanyour.core.flows.TvPerformanceStats
 import tv.cleanyour.core.flows.TvToolsState
+import tv.cleanyour.core.flows.TvToolsIntent
 import tv.cleanyour.core.model.BlobRef
 import tv.cleanyour.core.model.DebugState
 import tv.cleanyour.core.model.Level
@@ -303,5 +306,40 @@ class ArabicReleaseScreenshotsTest {
         compose.onNodeWithText("هل تريد مسح بيانات شاهد (Shahid)؟").fetchSemanticsNode()
         compose.onNodeWithText("سيحذف هذا جميع بيانات تطبيق شاهد", substring = true).fetchSemanticsNode()
         compose.onNodeWithText("مسح بيانات التطبيق").fetchSemanticsNode()
+
+        currentHeight = 1220.dp
+        currentScreen = {
+            TvToolsScreen(
+                TvToolsState(
+                    tvName = "Mi TV 4A",
+                    textInput = "Shahid مرحبا",
+                    remoteStatus = RemoteStatus.UnsupportedText,
+                ),
+                {},
+                {},
+            )
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("لم يُرسل النص.", substring = true).fetchSemanticsNode()
+        compose.onNodeWithText("Shahid مرحبا").fetchSemanticsNode()
+
+    }
+
+    @Test fun remoteTextFieldPreservesLineBreaksForSafetyCheck() {
+        var text by mutableStateOf("")
+        compose.setContent {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                CytTheme(darkTheme = true, reducedMotion = true) {
+                    TvToolsScreen(
+                        TvToolsState(tvName = "Mi TV 4A", textInput = text),
+                        { intent -> if (intent is TvToolsIntent.UpdateText) text = intent.text },
+                        {},
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("tvtools_text_input").performTextInput("line1\nline2")
+        compose.waitForIdle()
+        assertEquals("line1\nline2", text)
     }
 }
