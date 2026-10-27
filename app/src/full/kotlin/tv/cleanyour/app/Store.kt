@@ -1,9 +1,12 @@
 package tv.cleanyour.app
 
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import tv.cleanyour.core.flows.StoreRules
 import tv.cleanyour.core.flows.UpdateChecker
 import tv.cleanyour.core.registry.ArtifactFetcher
 import tv.cleanyour.core.registry.HttpFetcher
+import tv.cleanyour.core.registry.IndexLimits
 import tv.cleanyour.core.trust.DownloadHosts
 
 // The full build (GitHub and F-Droid, STORES-PLAN 1): everything the app did before the store
@@ -19,11 +22,29 @@ object Store : StorePorts {
     // does not answer or the repository has no published release yet.
     override fun updateChecker(http: HttpFetcher) = UpdateChecker { current ->
         val r = http.get(RELEASES_URL, null, null)
+        val contentLength = r.length
         if (r.code != 200) { r.body?.close(); null } else {
-            val body = r.body?.use { it.readBytes().decodeToString() } ?: return@UpdateChecker null
+            val body = r.body?.use { input ->
+                if (contentLength != null && contentLength > IndexLimits.INDEX_BYTES) null
+                else readReleaseBody(input)
+            } ?: return@UpdateChecker null
             val tag = Regex("\"tag_name\"\\s*:\\s*\"v?([0-9][0-9A-Za-z.]*)\"").find(body)?.groupValues?.get(1) ?: return@UpdateChecker null
             val order = compareDottedNumericVersions(tag, current) ?: return@UpdateChecker null
             if (order > 0) tag else ""
+        }
+    }
+
+    private fun readReleaseBody(input: InputStream): String? {
+        val out = ByteArrayOutputStream()
+        val buffer = ByteArray(8 * 1024)
+        var total = 0
+        while (true) {
+            val remaining = IndexLimits.INDEX_BYTES - total
+            val n = input.read(buffer, 0, minOf(buffer.size, remaining + 1))
+            if (n < 0) return out.toByteArray().decodeToString()
+            if (n > remaining) return null
+            out.write(buffer, 0, n)
+            total += n
         }
     }
 
