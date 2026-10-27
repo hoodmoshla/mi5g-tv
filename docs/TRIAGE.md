@@ -40,7 +40,7 @@ Both forms ask for the report the app copies. It is plain text with a fixed shap
     `unreachable`, `protected`, `install_failed(<code>)`, `no_space`, `auth_denied`, and so on
     (`LogCodes` in `:core:flows`).
 
-Never ask anyone to post their serial number, IP address, Wi-Fi name or a pairing code. If a report
+Never ask anyone to post their serial number, MAC or IP address, Wi-Fi name or a pairing code. If a report
 has one anyway, edit it out of the issue and tell them you did, without fuss.
 
 ## From a TV report to a list upstream

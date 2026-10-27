@@ -5,7 +5,7 @@ Clean Your TV (the Android app, package `tv.cleanyour.app`) is a community-built
 
 This policy is published at [cleanyour.tv/app/android/privacy](https://cleanyour.tv/app/android/privacy).
 
-Effective date: 2026-10-23.
+Effective date: 2026-10-27.
 
 ## The short version
 
@@ -49,9 +49,10 @@ services.
   "Save a copy" and send the file somewhere yourself.
 - **Your choices**, such as the dock and the look you picked, and the TVs you have set up.
 - **The app's diagnostics log.** A plain text record of what the app did (connecting, reading the
-  TV, each step and how it went), with network addresses, serial numbers, keys and pairing codes
-  removed. It stays on your phone. "Delete everything" in the app's Settings deletes it, and so
-  does clearing the app's storage. It leaves your phone only if you share a report.
+  TV, each step and how it went). IPv4 addresses are masked except for the last octet; IPv6 and
+  MAC addresses, Wi-Fi names, serial numbers, keys and pairing codes are redacted. It stays on your phone.
+  "Delete everything" in the app's Settings deletes it, and so does clearing the app's storage.
+  It leaves your phone only if you share a report.
 
 You can delete all of this at any time from the app's Settings, or by clearing the app's storage
 or uninstalling it in Android's settings.
@@ -69,14 +70,16 @@ itself. Each one shows you the whole report first, as plain text, and then does 
   is posted until you post the form. A GitHub issue is public.
 
 Or you close the screen and nothing happens. "Report a problem" holds the app's own log with
-network addresses, serial numbers, keys and pairing codes removed, and a short summary of the TV.
+IPv4 addresses masked except for the last octet, and IPv6 and MAC addresses, serial numbers, keys
+and pairing codes redacted, plus a short summary of the TV.
 The log can name the apps the app switched off or tried to switch off or back on, which can
 include an app you picked yourself in Customise. "Help add this TV" holds the TV's brand, model,
 Android version and build, how the app matched it, and the apps the TV came with. In that report
 and in the summary, apps you installed yourself are only counted, never named, and that includes a
 home screen app you installed. Both name the app version and your phone's model and Android
-version. Neither has the TV's serial number, its name or room, your network addresses or your
-Wi-Fi name. This is the same in the Google Play version.
+version. Neither includes the TV's serial number, its name or room, a MAC address or your Wi-Fi
+name. No full IPv4 address is included (only its last octet is retained in the log), and IPv6
+addresses are redacted. This is the same in the Google Play version.
 
 ## Permissions
 

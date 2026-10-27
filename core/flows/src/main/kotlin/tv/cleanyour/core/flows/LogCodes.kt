@@ -86,8 +86,8 @@ object LogCodes {
     // addresses, MAC addresses, 16 hex ids and long blobs masked. The app's redactor runs over every
     // log line as well; this keeps the flows' own output safe in tests and in the TV report.
     fun clean(text: String, max: Int = 160): String =
-        Scrub.text(text.map { if (it.isISOControl() || it.isWhitespace()) ' ' else it }.joinToString("")
-            .replace(Regex(" {2,}"), " ").trim()).take(max)
+        Scrub.text(text).map { if (it.isISOControl() || it.isWhitespace()) ' ' else it }.joinToString("")
+            .replace(Regex(" {2,}"), " ").trim().take(max)
 }
 
 // Defence in depth for anything the TV told us: none of the report's or the log's fields carry these
@@ -103,7 +103,11 @@ internal object Scrub {
     private val TV_ID = Regex("\\b[0-9a-f]{16}\\b")
     private val BLOB = Regex("[A-Za-z0-9+_=-]{40,}")
     private val SERIAL = Regex("(?i)(serial(?:no)?|ro\\.serialno|ro\\.boot\\.serialno)([\"'\\]\\s:=\\[]+)([A-Za-z0-9]{4,})")
-    private val SSID = Regex("(?i)(ssid|wifi[ _-]?name)([\"'\\s:=]+)([^,;\\s\"']+)")
+    // Quoted names may contain spaces/commas; unquoted values stop at the next field to preserve the log.
+    private const val SSID_FIELD_KEY = "(?:[A-Za-z_][A-Za-z0-9_.-]*|wifi[ _-]?name)"
+    private val SSID = Regex(
+        """(?i)(ssid|wifi[ _-]?name)([ \t]*[:=][ \t]*|[ \t]+)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^;\r\n]+?)(?=,\s*$SSID_FIELD_KEY\s*[:=]|;|\r|\n|$|\s+$SSID_FIELD_KEY\s*[:=])"""
+    )
     private val CODE = Regex("(?<![\\w.])\\d{6}(?![\\w.])")
 
     fun text(s: String, codes: Boolean = true): String = s
