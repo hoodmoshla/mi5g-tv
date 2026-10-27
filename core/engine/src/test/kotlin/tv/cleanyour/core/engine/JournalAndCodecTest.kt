@@ -95,6 +95,38 @@ class FileJournalTest {
         assertEquals(all.last(), JournalJson.parseLine(JournalJson.line(all.last())))
     }
 
+    @Test fun appendingAfterTornTailKeepsNewRecordsReadable() = runTest(timeout = TEST_TIMEOUT) {
+        val root = tempRoot()
+        val start = records().first()
+        FileJournal(root, EmptyCoroutineContext).append(start)
+        val file = File(root, "tvs/${tvId.value}/journal/${planId.value}.jsonl")
+        val torn = JournalJson.line(records()[1]).encodeToByteArray()
+        file.appendBytes(torn.copyOf(torn.size / 2))
+
+        val resumedJournal = FileJournal(root, EmptyCoroutineContext)
+        val paused = JournalRecord.Paused(planId, 0, PauseReason.CONNECTION_LOST)
+        resumedJournal.append(paused)
+
+        assertEquals(listOf(start, paused), FileJournal(root, EmptyCoroutineContext).read(planId))
+    }
+
+    @Test fun appendingAfterInvalidLineKeepsNewRecordsReadable() = runTest(timeout = TEST_TIMEOUT) {
+        val root = tempRoot()
+        val start = records().first()
+        FileJournal(root, EmptyCoroutineContext).append(start)
+        val file = File(root, "tvs/${tvId.value}/journal/${planId.value}.jsonl")
+        val line = JournalJson.line(records()[1])
+        val checksumStart = line.length - 8
+        val invalidLine = line.dropLast(8) + (if (line[checksumStart] == '0') "1" else "0") + line.takeLast(7) + "\n"
+        file.appendText(invalidLine)
+
+        val resumedJournal = FileJournal(root, EmptyCoroutineContext)
+        val paused = JournalRecord.Paused(planId, 0, PauseReason.CONNECTION_LOST)
+        resumedJournal.append(paused)
+
+        assertEquals(listOf(start, paused), FileJournal(root, EmptyCoroutineContext).read(planId))
+    }
+
     @Test fun everyRecordRoundTripsThroughJson() {
         for (r in records()) {
             val line = JournalJson.line(r)

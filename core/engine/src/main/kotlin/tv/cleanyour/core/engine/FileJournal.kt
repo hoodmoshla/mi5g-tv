@@ -6,6 +6,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import tv.cleanyour.core.model.PlanId
 import tv.cleanyour.core.model.TvId
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
@@ -23,6 +24,7 @@ class FileJournal(
 ) : Journal {
     private val lock = Mutex()
     private val tvOf = ConcurrentHashMap<PlanId, TvId>()
+    private val knownLength = ConcurrentHashMap<PlanId, Long>()
 
     private fun dir(tvId: TvId) = File(root, "tvs/${tvId.value}/journal")
     private fun file(tvId: TvId, planId: PlanId) = File(dir(tvId), planId.value + ".jsonl")
@@ -51,18 +53,50 @@ class FileJournal(
             val createdDirs = generateSequence(f.parentFile) { it.parentFile }.takeWhile { !it.exists() }.toList()
             f.parentFile.mkdirs()
             val fresh = !f.exists()
+            val currentLength = f.length()
+            if (currentLength > 0 && knownLength[record.planId] != currentLength) truncateInvalidTail(f)
             val bytes = (JournalJson.line(record) + "\n").toByteArray(StandardCharsets.UTF_8)
             FileChannel.open(f.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND).use { ch ->
                 val buf = ByteBuffer.wrap(bytes)
                 while (buf.hasRemaining()) ch.write(buf)
                 ch.force(false)
             }
+            knownLength[record.planId] = f.length()
             // The file's own force does not make its directory entry durable: a power loss right
             // after the first record could lose the whole file. So a new file's directory, and the
             // parent of every directory just made, is forced once (R1 R-9).
             if (fresh) {
                 syncDir(f.parentFile)
                 for (d in createdDirs) d.parentFile?.let { syncDir(it) }
+            }
+        }
+    }
+
+    // When this instance first sees a changed file, retain only complete CRC-valid lines. parse()
+    // ignores everything after the first invalid/torn line, so appending without trimming would
+    // make subsequent records unreachable as well.
+    private fun truncateInvalidTail(f: File) {
+        var validBytes = 0L
+        var offset = 0L
+        val line = ByteArrayOutputStream()
+        f.inputStream().buffered().use { input ->
+            while (true) {
+                val b = input.read()
+                if (b < 0) break
+                offset++
+                if (b == '\n'.code) {
+                    if (JournalJson.parseLine(String(line.toByteArray(), StandardCharsets.UTF_8)) == null) break
+                    validBytes = offset
+                    line.reset()
+                } else {
+                    line.write(b)
+                }
+            }
+        }
+        if (validBytes < f.length()) {
+            FileChannel.open(f.toPath(), StandardOpenOption.WRITE).use { ch ->
+                ch.truncate(validBytes)
+                ch.force(true)
             }
         }
     }
