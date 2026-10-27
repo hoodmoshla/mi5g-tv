@@ -40,6 +40,12 @@
     <string name="modules_remove_body">This takes the app off the TV. Your home screen and your other cards stay as they are.</string>
     <string name="modules_remove_confirm">Remove</string>
     <string name="modules_removed">{name} was removed.</string>
+    <string name="modules_private_dns_not_applied">{name} was added, but Private DNS could not be safely changed; the previous settings were left unchanged or restored.</string>
+    <string name="modules_private_dns_restore_pending">{name} was added, but Private DNS rollback did not finish. The saved previous settings remain; remove it while the TV is reachable to retry.</string>
+    <string name="modules_private_dns_restore_failed">Private DNS could not be verified, so {name} was not removed. Check the TV connection and try again.</string>
+    <string name="modules_private_dns_no_backup">{name} was removed, but no previous Private DNS settings were saved. The current settings were left unchanged.</string>
+    <string name="modules_private_dns_backup_retained">{name} was removed and Private DNS was restored, but its local backup could not be cleared. Check the settings before adding it again.</string>
+    <string name="modules_private_dns_removal_failed">Removing {name} did not finish. Private DNS was restored, and the saved backup remains for another try.</string>
     <string name="modules_state_cd">{name}: {state}</string>
 
     <!-- Update re-consent (UX 5.4) -->

@@ -420,9 +420,7 @@ class TvToolsMachine(
         val out0 = (r0?.stdout.orEmpty() + "\n" + r0?.stderr.orEmpty())
         if (r0 != null && r0.exit == 0 && "Error:" !in out0 && "does not exist" !in out0) {
             if (pkgStr == "com.midroid.mi5gtv.dns") {
-                for (l in ShellRenderer.applyAdGuardDnsLines().take(1)) {
-                    attempt { TvShellRunner.run(session, l) }
-                }
+                attempt { TvShellRunner.run(session, ShellRenderer.grantAdGuardDnsPermissionLine()) }
             }
             send(PowerToolUpdate(PowerToolStatus.Done(label)))
             effect(ManageEffect.HapticDouble)
@@ -437,9 +435,7 @@ class TvToolsMachine(
             val installed = installBlobOnSession(session, blob)
             if (installed) {
                 if (pkgStr == "com.midroid.mi5gtv.dns") {
-                    for (l in ShellRenderer.applyAdGuardDnsLines().take(1)) {
-                        attempt { TvShellRunner.run(session, l) }
-                    }
+                    attempt { TvShellRunner.run(session, ShellRenderer.grantAdGuardDnsPermissionLine()) }
                 }
                 val r1 = attempt { TvShellRunner.run(session, launchLine) }.getOrNull()
                 if (r1 != null && r1.exit == 0) {

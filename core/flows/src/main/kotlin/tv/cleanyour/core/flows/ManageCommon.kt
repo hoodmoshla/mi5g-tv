@@ -30,6 +30,7 @@ import tv.cleanyour.core.store.BlobStore
 import tv.cleanyour.core.store.Clock
 import tv.cleanyour.core.store.DocumentStore
 import tv.cleanyour.core.store.SnapshotStore
+import tv.cleanyour.core.store.GatePass
 import tv.cleanyour.core.store.TvRepository
 import tv.cleanyour.core.trust.ApkInspector
 import tv.cleanyour.core.trust.LauncherPin
@@ -56,7 +57,9 @@ enum class SnackKind { PUT_BACK, SWITCHED_OFF, HOME_SAVED, MODULE_REMOVED, EXPOR
     KEPT_TV_INPUT,    // RF-LAUNCHER-250 F1: a switch-off the live check kept because it runs the TV's inputs
     KEPT_ON,          // issue #10: a switch-off the TV kept on (or the live check refused); nothing changed
     RUN_BUSY,         // Forget this TV refused: setup is still working on this TV
-    RUN_BUSY_ANY }    // Delete everything refused: setup is still working on the TV named
+    RUN_BUSY_ANY,     // Delete everything refused: setup is still working on the TV named
+    PRIVATE_DNS_NOT_APPLIED, PRIVATE_DNS_RESTORE_PENDING, PRIVATE_DNS_RESTORE_FAILED, PRIVATE_DNS_NO_BACKUP,
+    PRIVATE_DNS_BACKUP_RETAINED, PRIVATE_DNS_REMOVAL_FAILED }
 
 // What a write in the Manage family is doing, for the narration row and the disabled buttons.
 sealed interface Busy {
@@ -105,6 +108,7 @@ class ManageDeps(
     // switch decision for each TV (SetupMachine keeps it).
     val about: AppAbout = AppAbout(appVersion, "full", "", ""),
     val homeDecisions: HomeDecisions = HomeDecisions(documents),
+    val privateDns: PrivateDnsController = PrivateDnsController(documents),
 ) {
     fun tv(id: TvId): Tv? = tvs.tvs.value.firstOrNull { it.id == id }
 
@@ -175,12 +179,24 @@ sealed interface WriteResult {
     data class Failed(val detail: String) : WriteResult
 }
 
+sealed interface WritePreflight {
+    data class Ready(val pass: GatePass?) : WritePreflight
+    data object Cancelled : WritePreflight
+    data class Failed(val detail: String) : WritePreflight
+}
+
 // The returning-user write of UX 4.11: the debugging step if needed (TvAccess), a plan from the
 // newest snapshot, the credential gate (D17), the run, then the restore point on the TV (D44).
 // `fresh` plans from a new snapshot instead of the newest stored one, for a request that needs what
 // an older snapshot may not hold (UpdateLauncher: the installed launcher's signer, launcher v2.4.0).
 class TvWriter(private val d: ManageDeps) {
-    suspend fun write(tvId: TvId, request: PlanRequest, fresh: Boolean = false, onBusy: (Busy) -> Unit = {}): WriteResult {
+    suspend fun write(
+        tvId: TvId,
+        request: PlanRequest,
+        fresh: Boolean = false,
+        preflight: (suspend (Tv, TvSession, Plan) -> WritePreflight)? = null,
+        onBusy: (Busy) -> Unit = {},
+    ): WriteResult {
         onBusy(Busy.Connecting)
         val session = when (val a = d.access.session(tvId)) {
             is AccessResult.Ok -> a.session
@@ -196,7 +212,16 @@ class TvWriter(private val d: ManageDeps) {
                 is PlanResult.Ok -> r.plan
                 is PlanResult.Refused -> return@attempt WriteResult.Refused(r.reasons)
             }
-            val outcome = d.runner.run(tv, plan, session, onStarted = { d.sessionEnd.touched(tvId) }) { s ->
+            val pass = when (val prepared = preflight?.invoke(tv, session, plan)) {
+                null -> null
+                is WritePreflight.Ready -> {
+                    if (GateKeeper.needsPass(plan) && prepared.pass == null) return@attempt WriteResult.GateCancelled
+                    prepared.pass
+                }
+                WritePreflight.Cancelled -> return@attempt WriteResult.GateCancelled
+                is WritePreflight.Failed -> return@attempt WriteResult.Failed(prepared.detail)
+            }
+            val outcome = d.runner.run(tv, plan, session, pass, onStarted = { d.sessionEnd.touched(tvId) }) { s ->
                 if (s is RunState.Running) onBusy(Busy.Working(s.percent, s.narration.map { it.text }))
             }
             when (outcome) {
