@@ -22,8 +22,24 @@ object Store : StorePorts {
         if (r.code != 200) { r.body?.close(); null } else {
             val body = r.body?.use { it.readBytes().decodeToString() } ?: return@UpdateChecker null
             val tag = Regex("\"tag_name\"\\s*:\\s*\"v?([0-9][0-9A-Za-z.]*)\"").find(body)?.groupValues?.get(1) ?: return@UpdateChecker null
-            if (tag != current) tag else ""
+            val order = compareDottedNumericVersions(tag, current) ?: return@UpdateChecker null
+            if (order > 0) tag else ""
         }
+    }
+
+    private fun compareDottedNumericVersions(candidate: String, current: String): Int? {
+        fun parts(version: String): List<Long>? {
+            val components = version.split('.')
+            if (components.any { it.isEmpty() || it.any { char -> char !in '0'..'9' } }) return null
+            return components.map { it.toLongOrNull() ?: return null }
+        }
+        val candidateParts = parts(candidate) ?: return null
+        val currentParts = parts(current) ?: return null
+        for (index in 0 until maxOf(candidateParts.size, currentParts.size)) {
+            val order = (candidateParts.getOrNull(index) ?: 0L).compareTo(currentParts.getOrNull(index) ?: 0L)
+            if (order != 0) return order
+        }
+        return 0
     }
 
     override fun addOnFetcher(make: () -> ArtifactFetcher): ArtifactFetcher = make()

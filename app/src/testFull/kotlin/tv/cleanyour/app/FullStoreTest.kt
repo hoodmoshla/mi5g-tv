@@ -66,6 +66,12 @@ class FullStoreTest {
         assertEquals("https://github.com/al3nkboot/mi5g-tv/releases", Store.releasePage)
     }
 
+    @Test fun theUpdateCheckNeverOffersOlderOrMalformedVersions() = runBlocking {
+        assertEquals("", Store.updateChecker(OneAnswer(200, """{"tag_name":"v1.4.9"}""")).latestNewerThan("1.5.0"))
+        assertEquals("1.10.0", Store.updateChecker(OneAnswer(200, """{"tag_name":"v1.10.0"}""")).latestNewerThan("1.9.0"))
+        assertEquals(null, Store.updateChecker(OneAnswer(200, """{"tag_name":"v1.5.0-beta"}""")).latestNewerThan("1.4.0"))
+    }
+
     @Test fun softwareUpdatesStayTheOwnersChoice() {
         val g = graph()
         val ota = PackageName("com.mitv.ota")
