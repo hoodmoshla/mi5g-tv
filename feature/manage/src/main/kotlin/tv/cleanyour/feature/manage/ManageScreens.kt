@@ -78,6 +78,7 @@ import tv.cleanyour.core.flows.TvAppFilter
 import tv.cleanyour.core.flows.TvAppManagerIntent
 import tv.cleanyour.core.flows.TvAppManagerState
 import tv.cleanyour.core.flows.TvInstalledApp
+import tv.cleanyour.core.flows.TvPerformanceLoadStatus
 import tv.cleanyour.core.flows.TvSettingsState
 import tv.cleanyour.core.flows.TvToolsIntent
 import tv.cleanyour.core.flows.TvToolsState
@@ -609,6 +610,21 @@ fun TvToolsScreen(state: TvToolsState, onIntent: (TvToolsIntent) -> Unit, onBack
                 }
             }
         }
+        TertiaryButton(
+            text = stringResource(R.string.tvtools_perf_refresh),
+            onClick = { onIntent(TvToolsIntent.RefreshPerformance) },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = state.performanceLoadStatus != TvPerformanceLoadStatus.LOADING,
+        )
+        when (state.performanceLoadStatus) {
+            TvPerformanceLoadStatus.LOADING -> LiveLine(stringResource(R.string.tvtools_perf_refreshing))
+            TvPerformanceLoadStatus.FAILED -> Body(
+                stringResource(R.string.tvtools_perf_refresh_failed),
+                Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
+                color = CytTheme.colors.danger,
+            )
+            TvPerformanceLoadStatus.IDLE -> Unit
+        }
         PrimaryButton(
             text = stringResource(R.string.tvtools_speed_boost_btn),
             onClick = { onIntent(TvToolsIntent.RunSpeedBoost) },
@@ -653,6 +669,10 @@ fun TvToolsScreen(state: TvToolsState, onIntent: (TvToolsIntent) -> Unit, onBack
                 accented = state.animationScale == TvAnimationScale.DEFAULT_1X,
             )
         }
+        Body(
+            stringResource(R.string.tvtools_low_resource_note),
+            Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
+        )
         when (state.animationScaleStatus) {
             AnimationScaleStatus.Applying -> LiveLine(stringResource(R.string.tvtools_anim_applying))
             is AnimationScaleStatus.Applied -> CheckLine(

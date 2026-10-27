@@ -132,6 +132,7 @@ data class TvToolsState(
     val screenshotStatus: ScreenshotStatus = ScreenshotStatus.Idle,
     val sideloadStatus: SideloadStatus = SideloadStatus.Idle,
     val performanceStats: TvPerformanceStats? = null,
+    val performanceLoadStatus: TvPerformanceLoadStatus = TvPerformanceLoadStatus.IDLE,
     val speedBoostStatus: SpeedBoostStatus = SpeedBoostStatus.Idle,
     val animationScale: TvAnimationScale = TvAnimationScale.DEFAULT_1X,
     val animationScaleStatus: AnimationScaleStatus = AnimationScaleStatus.Idle,
@@ -142,6 +143,8 @@ data class TvToolsState(
     val tvBannerInput: String = "",
     val powerToolStatus: PowerToolStatus = PowerToolStatus.Idle,
 )
+
+enum class TvPerformanceLoadStatus { IDLE, LOADING, FAILED }
 
 sealed interface TvToolsIntent {
     data class PressKey(val key: TvKeyEvent) : TvToolsIntent
@@ -193,7 +196,12 @@ class TvToolsMachine(
     private data class RemoteUpdate(val status: RemoteStatus, val clearText: Boolean = false)
     private data class ScreenshotUpdate(val status: ScreenshotStatus)
     private data class SideloadUpdate(val status: SideloadStatus)
-    private data class PerformanceLoaded(val stats: TvPerformanceStats?, val scale: TvAnimationScale?)
+    private data object PerformanceLoadStarted
+    private data class PerformanceLoaded(
+        val stats: TvPerformanceStats?,
+        val scale: TvAnimationScale?,
+        val statsLoaded: Boolean,
+    )
     private data class SpeedBoostUpdate(val status: SpeedBoostStatus)
     private data class AnimationScaleUpdate(val scale: TvAnimationScale, val status: AnimationScaleStatus)
     private data class CastUrlUpdate(val status: CastUrlStatus, val clearInput: Boolean = false)
@@ -222,9 +230,11 @@ class TvToolsMachine(
         )
         TvToolsIntent.ClearApk -> state.copy(sideloadStatus = SideloadStatus.Idle)
         is SideloadUpdate -> state.copy(sideloadStatus = event.status)
+        PerformanceLoadStarted -> state.copy(performanceLoadStatus = TvPerformanceLoadStatus.LOADING)
         is PerformanceLoaded -> state.copy(
             performanceStats = event.stats ?: state.performanceStats,
             animationScale = event.scale ?: state.animationScale,
+            performanceLoadStatus = if (event.statsLoaded) TvPerformanceLoadStatus.IDLE else TvPerformanceLoadStatus.FAILED,
         )
         is SpeedBoostUpdate -> state.copy(speedBoostStatus = event.status)
         is AnimationScaleUpdate -> state.copy(
@@ -282,7 +292,9 @@ class TvToolsMachine(
                 val ready = before.sideloadStatus as? SideloadStatus.Ready
                 if (ready != null) scope.launch { installApk(ready) }
             }
-            TvToolsIntent.RefreshPerformance -> scope.launch { loadPerformance(liveOnly = false) }
+            TvToolsIntent.RefreshPerformance -> if (before.performanceLoadStatus != TvPerformanceLoadStatus.LOADING) {
+                scope.launch { loadPerformance(liveOnly = false) }
+            }
             TvToolsIntent.RunSpeedBoost -> if (before.speedBoostStatus !is SpeedBoostStatus.Boosting) {
                 scope.launch { runSpeedBoost() }
             }
@@ -536,11 +548,16 @@ class TvToolsMachine(
     }
 
     private suspend fun loadPerformance(liveOnly: Boolean) {
+        send(PerformanceLoadStarted)
         val session = if (liveOnly) {
             d.access.live(tvId)
         } else {
             (d.access.session(tvId) as? AccessResult.Ok)?.session
-        } ?: return
+        }
+        if (session == null) {
+            send(PerformanceLoaded(stats = null, scale = null, statsLoaded = false))
+            return
+        }
         val memRes = attempt { TvShellRunner.run(session, ShellRenderer.memInfoLine()) }.getOrNull()
         val dfRes = attempt { TvShellRunner.run(session, ShellRenderer.dfDataLine()) }.getOrNull()
         val scaleRes = attempt { TvShellRunner.run(session, ShellRenderer.getWindowAnimationScaleLine()) }.getOrNull()
@@ -554,9 +571,7 @@ class TvToolsMachine(
         } else {
             null
         }
-        if (stats != null || scale != null) {
-            send(PerformanceLoaded(stats, scale))
-        }
+        send(PerformanceLoaded(stats, scale, statsLoaded = stats != null))
     }
 
     private suspend fun runSpeedBoost() {
